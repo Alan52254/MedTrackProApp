@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/calendar_context_event.dart';
 import '../models/decision_alert.dart';
 import '../models/medication_event.dart';
 import '../models/patient_profile.dart';
@@ -15,6 +16,9 @@ class LocalDemoStore extends ChangeNotifier {
       _patientProfile = seedData.patientProfile,
       _prescriptions = List<Prescription>.from(seedData.prescriptions),
       _medicationEvents = List<MedicationEvent>.from(seedData.medicationEvents),
+      _calendarContextEvents = List<CalendarContextEvent>.from(
+        seedData.calendarContextEvents,
+      ),
       _alerts = List<DecisionAlert>.from(seedData.alerts);
 
   final LocalDemoSeedData _seedData;
@@ -22,6 +26,7 @@ class LocalDemoStore extends ChangeNotifier {
   PatientProfile _patientProfile;
   List<Prescription> _prescriptions;
   List<MedicationEvent> _medicationEvents;
+  List<CalendarContextEvent> _calendarContextEvents;
   List<DecisionAlert> _alerts;
 
   DateTime get referenceDate => _seedData.referenceDate;
@@ -33,6 +38,9 @@ class LocalDemoStore extends ChangeNotifier {
 
   List<MedicationEvent> get medicationEvents =>
       List<MedicationEvent>.unmodifiable(_medicationEvents);
+
+  List<CalendarContextEvent> get calendarContextEvents =>
+      List<CalendarContextEvent>.unmodifiable(_calendarContextEvents);
 
   List<DecisionAlert> get alerts => List<DecisionAlert>.unmodifiable(_alerts);
 
@@ -60,6 +68,27 @@ class LocalDemoStore extends ChangeNotifier {
               event.id == updatedEvent.id ? updatedEvent : event,
         )
         .toList(growable: false);
+    notifyListeners();
+  }
+
+  void upsertCalendarContextEvent(CalendarContextEvent updatedEvent) {
+    final bool exists = _calendarContextEvents.any(
+      (CalendarContextEvent event) => event.id == updatedEvent.id,
+    );
+
+    if (exists) {
+      _calendarContextEvents = _calendarContextEvents
+          .map(
+            (CalendarContextEvent event) =>
+                event.id == updatedEvent.id ? updatedEvent : event,
+          )
+          .toList(growable: false);
+    } else {
+      _calendarContextEvents = <CalendarContextEvent>[
+        ..._calendarContextEvents,
+        updatedEvent,
+      ];
+    }
     notifyListeners();
   }
 

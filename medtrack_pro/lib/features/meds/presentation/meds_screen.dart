@@ -185,6 +185,34 @@ class _PrescriptionCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
+            _DetailGrid(
+              rows: <({String label, String value})>[
+                (label: 'Drug', value: prescription.drugName),
+                (
+                  label: 'Common frequency',
+                  value: prescription.commonFrequency,
+                ),
+                (label: 'Dose', value: prescription.dose),
+                (
+                  label: 'Duration days',
+                  value: prescription.durationDays.toString(),
+                ),
+                (label: 'Indication', value: prescription.indication),
+                (
+                  label: 'Drug interactions',
+                  value: prescription.drugInteractions.isEmpty
+                      ? 'None noted'
+                      : prescription.drugInteractions.join(', '),
+                ),
+                (
+                  label: 'Note',
+                  value: prescription.note.isEmpty
+                      ? 'No additional note'
+                      : prescription.note,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             Row(
               children: <Widget>[
                 Expanded(
@@ -208,6 +236,48 @@ class _PrescriptionCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DetailGrid extends StatelessWidget {
+  const _DetailGrid({required this.rows});
+
+  final List<({String label, String value})> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: rows
+          .map(
+            (({String label, String value}) row) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  SizedBox(
+                    width: 122,
+                    child: Text(
+                      row.label,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      row.value,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(growable: false),
     );
   }
 }

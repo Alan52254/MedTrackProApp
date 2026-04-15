@@ -16,16 +16,23 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   late final CalendarController _controller;
   late final bool _ownsController;
+  late final TextEditingController _activityController;
 
   @override
   void initState() {
     super.initState();
     _ownsController = widget.controller == null;
     _controller = widget.controller ?? CalendarController();
+    _activityController = TextEditingController(
+      text: _controller.state.contextForm.activity,
+    );
+    _controller.addListener(_syncActivityController);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_syncActivityController);
+    _activityController.dispose();
     if (_ownsController) {
       _controller.dispose();
     }
@@ -50,16 +57,88 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
             const Divider(height: 1),
             Expanded(
-              child: state.isEmpty
-                  ? const _EmptyState()
-                  : _EventList(
-                      key: const Key('calendar-event-list'),
-                      events: state.filteredEvents,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: <Widget>[
+                  _ContextEventFormCard(
+                    state: state,
+                    activityController: _activityController,
+                    onDateTap: () => _pickDate(state.contextForm.date),
+                    onStartTimeTap: () => _pickTime(
+                      state.contextForm.startTime,
+                      _controller.updateContextStartTime,
                     ),
+                    onEndTimeTap: () => _pickTime(
+                      state.contextForm.endTime,
+                      _controller.updateContextEndTime,
+                    ),
+                    onActivityChanged: _controller.updateContextActivity,
+                    onReset: _controller.resetContextForm,
+                    onSave: _controller.saveContextEvent,
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Medication Events',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 12),
+                  state.isEmpty
+                      ? const _EmptyState()
+                      : _EventList(
+                          key: const Key('calendar-event-list'),
+                          events: state.filteredEvents,
+                        ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Context Events',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 12),
+                  _ContextEventList(events: state.contextEvents),
+                ],
+              ),
             ),
           ],
         );
       },
+    );
+  }
+
+  Future<void> _pickDate(DateTime currentValue) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: currentValue,
+      firstDate: DateTime(currentValue.year - 1),
+      lastDate: DateTime(currentValue.year + 1),
+    );
+
+    if (picked != null) {
+      _controller.updateContextDate(picked);
+    }
+  }
+
+  Future<void> _pickTime(
+    String currentValue,
+    ValueChanged<String> onSelected,
+  ) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: _parseTime(currentValue),
+    );
+
+    if (picked != null) {
+      onSelected(_formatTime(picked));
+    }
+  }
+
+  void _syncActivityController() {
+    final String value = _controller.state.contextForm.activity;
+    if (_activityController.text == value) {
+      return;
+    }
+    _activityController.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
     );
   }
 }
@@ -93,19 +172,21 @@ class _DateStripSelector extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: dates.map((DateTime date) {
-          final bool isSelected = _isSameDay(date, selectedDate);
-          final bool isToday = _isSameDay(date, referenceDate);
+        children: dates
+            .map((DateTime date) {
+              final bool isSelected = _isSameDay(date, selectedDate);
+              final bool isToday = _isSameDay(date, referenceDate);
 
-          return _DateChip(
-            key: Key('calendar-date-${date.month}-${date.day}'),
-            weekday: _weekdayLabels[date.weekday - 1],
-            day: date.day.toString(),
-            isSelected: isSelected,
-            isToday: isToday,
-            onTap: () => onDateSelected(date),
-          );
-        }).toList(growable: false),
+              return _DateChip(
+                key: Key('calendar-date-${date.month}-${date.day}'),
+                weekday: _weekdayLabels[date.weekday - 1],
+                day: date.day.toString(),
+                isSelected: isSelected,
+                isToday: isToday,
+                onTap: () => onDateSelected(date),
+              );
+            })
+            .toList(growable: false),
       ),
     );
   }
@@ -139,13 +220,13 @@ class _DateChip extends StatelessWidget {
     final Color backgroundColor = isSelected
         ? colorScheme.primary
         : isToday
-            ? colorScheme.primaryContainer
-            : Colors.transparent;
+        ? colorScheme.primaryContainer
+        : Colors.transparent;
     final Color textColor = isSelected
         ? colorScheme.onPrimary
         : isToday
-            ? colorScheme.onPrimaryContainer
-            : colorScheme.onSurface;
+        ? colorScheme.onPrimaryContainer
+        : colorScheme.onSurface;
 
     return GestureDetector(
       onTap: onTap,
@@ -180,6 +261,145 @@ class _DateChip extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ContextEventFormCard extends StatelessWidget {
+  const _ContextEventFormCard({
+    required this.state,
+    required this.activityController,
+    required this.onDateTap,
+    required this.onStartTimeTap,
+    required this.onEndTimeTap,
+    required this.onActivityChanged,
+    required this.onReset,
+    required this.onSave,
+  });
+
+  final CalendarState state;
+  final TextEditingController activityController;
+  final VoidCallback onDateTap;
+  final VoidCallback onStartTimeTap;
+  final VoidCallback onEndTimeTap;
+  final ValueChanged<String> onActivityChanged;
+  final VoidCallback onReset;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'Calendar Data',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Local demo form for date, start time, end time, and activity.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _CalendarField(
+              label: 'Date',
+              value: _formatDate(state.contextForm.date),
+              fieldKey: const Key('calendar-context-date-field'),
+              onTap: onDateTap,
+            ),
+            const SizedBox(height: 12),
+            _CalendarField(
+              label: 'Start time',
+              value: state.contextForm.startTime,
+              fieldKey: const Key('calendar-context-start-time-field'),
+              onTap: onStartTimeTap,
+            ),
+            const SizedBox(height: 12),
+            _CalendarField(
+              label: 'End time',
+              value: state.contextForm.endTime,
+              fieldKey: const Key('calendar-context-end-time-field'),
+              onTap: onEndTimeTap,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('calendar-context-activity-field'),
+              controller: activityController,
+              onChanged: onActivityChanged,
+              decoration: const InputDecoration(
+                labelText: 'Activity',
+                hintText: 'Enter activity',
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (state.contextSaveMessage.isNotEmpty) ...<Widget>[
+              Text(
+                state.contextSaveMessage,
+                key: const Key('calendar-context-save-message'),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton(
+                    key: const Key('calendar-context-reset-button'),
+                    onPressed: onReset,
+                    child: const Text('Reset'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    key: const Key('calendar-context-save-button'),
+                    onPressed: onSave,
+                    child: const Text('Save'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarField extends StatelessWidget {
+  const _CalendarField({
+    required this.label,
+    required this.value,
+    required this.fieldKey,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final Key fieldKey;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: fieldKey,
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          suffixIcon: const Icon(Icons.edit_calendar_rounded),
+        ),
+        child: Text(value),
       ),
     );
   }
@@ -231,18 +451,18 @@ class _EventList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      itemCount: events.length,
-      separatorBuilder: (BuildContext context, int index) =>
-          const SizedBox(height: 10),
-      itemBuilder: (BuildContext context, int index) {
-        final CalendarEventViewModel item = events[index];
-        return _EventCard(
-          key: Key('calendar-event-${item.event.id}'),
-          viewModel: item,
-        );
-      },
+    return Column(
+      children: events
+          .map(
+            (CalendarEventViewModel item) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _EventCard(
+                key: Key('calendar-event-${item.event.id}'),
+                viewModel: item,
+              ),
+            ),
+          )
+          .toList(growable: false),
     );
   }
 }
@@ -277,7 +497,7 @@ class _EventCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${viewModel.dose}  •  ${viewModel.instruction}',
+                    '${viewModel.dose} - ${viewModel.instruction}',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -304,10 +524,7 @@ class _EventCard extends StatelessWidget {
 }
 
 class _TimeColumn extends StatelessWidget {
-  const _TimeColumn({
-    required this.timeLabel,
-    required this.originalTimeLabel,
-  });
+  const _TimeColumn({required this.timeLabel, required this.originalTimeLabel});
 
   final String timeLabel;
   final String? originalTimeLabel;
@@ -339,6 +556,46 @@ class _TimeColumn extends StatelessWidget {
   }
 }
 
+class _ContextEventList extends StatelessWidget {
+  const _ContextEventList({required this.events});
+
+  final List<CalendarContextEventViewModel> events;
+
+  @override
+  Widget build(BuildContext context) {
+    if (events.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'No context events for this date yet.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: events
+          .map(
+            (CalendarContextEventViewModel item) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Card(
+                key: Key('calendar-context-event-${item.event.id}'),
+                child: ListTile(
+                  title: Text(item.event.activity),
+                  subtitle: Text(
+                    '${item.dateLabel} - ${item.event.startTime} to ${item.event.endTime}',
+                  ),
+                ),
+              ),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({required this.status});
 
@@ -347,7 +604,7 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ({Color background, Color foreground, String label}) style =
-        _resolveStyle(context);
+        _resolveStyle();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -365,9 +622,7 @@ class _StatusBadge extends StatelessWidget {
     );
   }
 
-  ({Color background, Color foreground, String label}) _resolveStyle(
-    BuildContext context,
-  ) {
+  ({Color background, Color foreground, String label}) _resolveStyle() {
     switch (status) {
       case 'done':
         return (
@@ -395,4 +650,21 @@ class _StatusBadge extends StatelessWidget {
         );
     }
   }
+}
+
+String _formatDate(DateTime date) {
+  return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+}
+
+TimeOfDay _parseTime(String value) {
+  final List<String> parts = value.split(':');
+  final int hour = parts.length == 2 ? int.tryParse(parts[0]) ?? 0 : 0;
+  final int minute = parts.length == 2 ? int.tryParse(parts[1]) ?? 0 : 0;
+  return TimeOfDay(hour: hour, minute: minute);
+}
+
+String _formatTime(TimeOfDay value) {
+  final String hour = value.hour.toString().padLeft(2, '0');
+  final String minute = value.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
 }

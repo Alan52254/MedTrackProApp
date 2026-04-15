@@ -69,11 +69,13 @@ class HomeController extends ChangeNotifier {
       return null;
     }
 
-    final Duration eventLength =
-        event.scheduledEnd.difference(event.scheduledStart);
+    final Duration eventLength = event.scheduledEnd.difference(
+      event.scheduledStart,
+    );
     final DateTime updatedAt = DateTime.now();
-    final int totalDelayMinutes =
-        targetTime.difference(event.originalStart ?? event.scheduledStart).inMinutes;
+    final int totalDelayMinutes = targetTime
+        .difference(event.originalStart ?? event.scheduledStart)
+        .inMinutes;
 
     final MedicationEvent delayedEvent = event.copyWith(
       scheduledStart: targetTime,
@@ -185,7 +187,6 @@ class HomeController extends ChangeNotifier {
         .firstWhere((prescription) => prescription.id == prescriptionId)
         .drugName;
   }
-
 
   void _handleStoreChanged() {
     notifyListeners();

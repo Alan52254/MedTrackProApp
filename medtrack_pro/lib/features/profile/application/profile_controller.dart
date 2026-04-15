@@ -39,9 +39,24 @@ class ProfileController extends ChangeNotifier {
     );
   }
 
+  void updateGender(String value) {
+    _updateForm(_state.form.copyWith(gender: value), clearSaveMessage: true);
+  }
+
+  void updateAge(String value) {
+    _updateForm(_state.form.copyWith(age: value), clearSaveMessage: true);
+  }
+
   void updateOccupation(String value) {
     _updateForm(
       _state.form.copyWith(occupation: value),
+      clearSaveMessage: true,
+    );
+  }
+
+  void updateComorbidityCount(String value) {
+    _updateForm(
+      _state.form.copyWith(comorbidityCount: value),
       clearSaveMessage: true,
     );
   }
@@ -128,14 +143,19 @@ class ProfileController extends ChangeNotifier {
     final PatientProfile updatedProfile = _state.savedProfile.copyWith(
       fullName: _state.form.fullName.trim(),
       patientCode: _state.form.patientCode.trim(),
+      gender: _state.form.gender.trim(),
+      age: _parseInt(_state.form.age, fallback: _state.savedProfile.age),
       occupation: _state.form.occupation.trim(),
+      comorbidityCount: _state.form.hasComorbidity
+          ? _parseInt(
+              _state.form.comorbidityCount,
+              fallback: _state.savedProfile.comorbidityCount,
+            )
+          : 0,
       hasComorbidity: _state.form.hasComorbidity,
       diseaseList: _state.form.hasComorbidity
           ? _parseDiseaseList(_state.form.diseaseList)
           : const <String>[],
-      comorbidityCount: _state.form.hasComorbidity
-          ? _parseDiseaseList(_state.form.diseaseList).length
-          : 0,
       hasCaregiver: _state.form.hasCaregiver,
       caregiverName: _state.form.hasCaregiver
           ? _state.form.caregiverName.trim()
@@ -188,13 +208,13 @@ class ProfileController extends ChangeNotifier {
         .toList(growable: false);
   }
 
+  int _parseInt(String rawValue, {required int fallback}) {
+    return int.tryParse(rawValue.trim()) ?? fallback;
+  }
+
   void _handleStoreChanged() {
     final PatientProfile profile = _store.patientProfile;
-    if (profile.updatedAt == _state.savedProfile.updatedAt &&
-        profile.fullName == _state.savedProfile.fullName &&
-        profile.patientCode == _state.savedProfile.patientCode &&
-        profile.occupation == _state.savedProfile.occupation &&
-        profile.wakeTime == _state.savedProfile.wakeTime) {
+    if (identical(profile, _state.savedProfile)) {
       return;
     }
 
