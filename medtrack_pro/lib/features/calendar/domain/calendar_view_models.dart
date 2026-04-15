@@ -1,3 +1,4 @@
+import '../../../core/models/calendar_context_event.dart';
 import '../../../core/models/medication_event.dart';
 import '../../../core/models/prescription.dart';
 
@@ -22,19 +23,6 @@ class CalendarEventViewModel {
 
   String get instruction => prescription.administrationType;
 
-  String get statusLabel {
-    switch (event.status) {
-      case 'done':
-        return 'Done';
-      case 'skipped':
-        return 'Skipped';
-      case 'delayed':
-        return 'Delayed';
-      default:
-        return 'Pending';
-    }
-  }
-
   String? get originalTimeLabel {
     final DateTime? original = event.originalStart;
     if (original == null) {
@@ -45,6 +33,18 @@ class CalendarEventViewModel {
     return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
   }
 
-  String get detailLine =>
-      prescription.note.isEmpty ? prescription.commonFrequency : prescription.note;
+  String get detailLine => prescription.note.isEmpty
+      ? prescription.commonFrequency
+      : prescription.note;
+}
+
+class CalendarContextEventViewModel {
+  const CalendarContextEventViewModel({required this.event});
+
+  final CalendarContextEvent event;
+
+  String get dateLabel {
+    final DateTime date = event.date;
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
 }

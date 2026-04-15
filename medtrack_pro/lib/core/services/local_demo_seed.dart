@@ -1,3 +1,4 @@
+import '../models/calendar_context_event.dart';
 import '../models/decision_alert.dart';
 import '../models/medication_event.dart';
 import '../models/patient_profile.dart';
@@ -9,6 +10,7 @@ class LocalDemoSeedData {
     required this.patientProfile,
     required this.prescriptions,
     required this.medicationEvents,
+    required this.calendarContextEvents,
     required this.alerts,
   });
 
@@ -16,6 +18,7 @@ class LocalDemoSeedData {
   final PatientProfile patientProfile;
   final List<Prescription> prescriptions;
   final List<MedicationEvent> medicationEvents;
+  final List<CalendarContextEvent> calendarContextEvents;
   final List<DecisionAlert> alerts;
 }
 
@@ -241,6 +244,38 @@ class LocalDemoSeed {
       ),
     ];
 
+    final List<CalendarContextEvent> calendarContextEvents =
+        <CalendarContextEvent>[
+          CalendarContextEvent(
+            id: 'ctx-001',
+            patientId: patientProfile.id,
+            date: startOfToday,
+            startTime: '07:30',
+            endTime: '08:00',
+            activity: 'Breakfast',
+            location: 'Home',
+            weather: '',
+            fatigueLevel: '',
+            source: 'local_demo',
+            createdAt: startOfToday,
+            updatedAt: startOfToday,
+          ),
+          CalendarContextEvent(
+            id: 'ctx-002',
+            patientId: patientProfile.id,
+            date: startOfToday,
+            startTime: '12:30',
+            endTime: '13:00',
+            activity: 'Lunch',
+            location: 'Office',
+            weather: '',
+            fatigueLevel: '',
+            source: 'local_demo',
+            createdAt: startOfToday,
+            updatedAt: startOfToday,
+          ),
+        ];
+
     final List<DecisionAlert> alerts = <DecisionAlert>[
       DecisionAlert(
         id: 'adherence-watch',
@@ -263,6 +298,7 @@ class LocalDemoSeed {
       patientProfile: patientProfile,
       prescriptions: prescriptions,
       medicationEvents: medicationEvents,
+      calendarContextEvents: calendarContextEvents,
       alerts: alerts,
     );
   }

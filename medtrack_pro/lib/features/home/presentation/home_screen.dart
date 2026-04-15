@@ -6,7 +6,11 @@ import '../application/home_state.dart';
 import '../domain/home_view_models.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.controller, this.onDelayNavigateToCalendar});
+  const HomeScreen({
+    super.key,
+    this.controller,
+    this.onDelayNavigateToCalendar,
+  });
 
   final HomeController? controller;
 
@@ -672,8 +676,6 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-
-
 class _SeverityStyle {
   const _SeverityStyle({
     required this.backgroundColor,
@@ -683,8 +685,6 @@ class _SeverityStyle {
   final Color backgroundColor;
   final Color foregroundColor;
 }
-
-
 
 String _formatLongDate(DateTime value) {
   const List<String> weekdays = <String>[

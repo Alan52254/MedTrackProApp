@@ -27,6 +27,36 @@ class CalendarContextEvent {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  CalendarContextEvent copyWith({
+    String? id,
+    String? patientId,
+    DateTime? date,
+    String? startTime,
+    String? endTime,
+    String? activity,
+    String? location,
+    String? weather,
+    String? fatigueLevel,
+    String? source,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return CalendarContextEvent(
+      id: id ?? this.id,
+      patientId: patientId ?? this.patientId,
+      date: date ?? this.date,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      activity: activity ?? this.activity,
+      location: location ?? this.location,
+      weather: weather ?? this.weather,
+      fatigueLevel: fatigueLevel ?? this.fatigueLevel,
+      source: source ?? this.source,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
   factory CalendarContextEvent.fromJson(Map<String, dynamic> json) {
     return CalendarContextEvent(
       id: json['id'] as String? ?? '',

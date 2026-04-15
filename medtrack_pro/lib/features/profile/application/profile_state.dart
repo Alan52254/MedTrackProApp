@@ -4,7 +4,10 @@ class ProfileFormData {
   const ProfileFormData({
     required this.fullName,
     required this.patientCode,
+    required this.gender,
+    required this.age,
     required this.occupation,
+    required this.comorbidityCount,
     required this.hasComorbidity,
     required this.diseaseList,
     required this.hasCaregiver,
@@ -19,7 +22,10 @@ class ProfileFormData {
 
   final String fullName;
   final String patientCode;
+  final String gender;
+  final String age;
   final String occupation;
+  final String comorbidityCount;
   final bool hasComorbidity;
   final String diseaseList;
   final bool hasCaregiver;
@@ -35,7 +41,10 @@ class ProfileFormData {
     return ProfileFormData(
       fullName: profile.fullName,
       patientCode: profile.patientCode,
+      gender: profile.gender,
+      age: profile.age.toString(),
       occupation: profile.occupation,
+      comorbidityCount: profile.comorbidityCount.toString(),
       hasComorbidity: profile.hasComorbidity,
       diseaseList: profile.diseaseList.join(', '),
       hasCaregiver: profile.hasCaregiver,
@@ -52,7 +61,10 @@ class ProfileFormData {
   ProfileFormData copyWith({
     String? fullName,
     String? patientCode,
+    String? gender,
+    String? age,
     String? occupation,
+    String? comorbidityCount,
     bool? hasComorbidity,
     String? diseaseList,
     bool? hasCaregiver,
@@ -67,7 +79,10 @@ class ProfileFormData {
     return ProfileFormData(
       fullName: fullName ?? this.fullName,
       patientCode: patientCode ?? this.patientCode,
+      gender: gender ?? this.gender,
+      age: age ?? this.age,
       occupation: occupation ?? this.occupation,
+      comorbidityCount: comorbidityCount ?? this.comorbidityCount,
       hasComorbidity: hasComorbidity ?? this.hasComorbidity,
       diseaseList: diseaseList ?? this.diseaseList,
       hasCaregiver: hasCaregiver ?? this.hasCaregiver,

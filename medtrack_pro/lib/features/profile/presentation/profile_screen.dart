@@ -18,7 +18,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   late final TextEditingController _fullNameController;
   late final TextEditingController _patientCodeController;
+  late final TextEditingController _ageController;
   late final TextEditingController _occupationController;
+  late final TextEditingController _comorbidityCountController;
   late final TextEditingController _diseaseListController;
   late final TextEditingController _caregiverNameController;
   late final TextEditingController _caregiverPhoneController;
@@ -31,7 +33,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final ProfileFormData form = _controller.state.form;
     _fullNameController = TextEditingController(text: form.fullName);
     _patientCodeController = TextEditingController(text: form.patientCode);
+    _ageController = TextEditingController(text: form.age);
     _occupationController = TextEditingController(text: form.occupation);
+    _comorbidityCountController = TextEditingController(
+      text: form.comorbidityCount,
+    );
     _diseaseListController = TextEditingController(text: form.diseaseList);
     _caregiverNameController = TextEditingController(text: form.caregiverName);
     _caregiverPhoneController = TextEditingController(
@@ -45,7 +51,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _controller.removeListener(_syncControllers);
     _fullNameController.dispose();
     _patientCodeController.dispose();
+    _ageController.dispose();
     _occupationController.dispose();
+    _comorbidityCountController.dispose();
     _diseaseListController.dispose();
     _caregiverNameController.dispose();
     _caregiverPhoneController.dispose();
@@ -95,6 +103,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 16),
                 _LabeledField(
+                  label: 'Gender',
+                  child: DropdownButtonFormField<String>(
+                    key: const Key('profile-gender-field'),
+                    initialValue: state.form.gender,
+                    items: const <DropdownMenuItem<String>>[
+                      DropdownMenuItem<String>(
+                        value: 'Male',
+                        child: Text('Male'),
+                      ),
+                      DropdownMenuItem<String>(
+                        value: 'Female',
+                        child: Text('Female'),
+                      ),
+                      DropdownMenuItem<String>(
+                        value: 'Other',
+                        child: Text('Other'),
+                      ),
+                    ],
+                    onChanged: (String? value) {
+                      if (value != null) {
+                        _controller.updateGender(value);
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _LabeledField(
+                  label: 'Age',
+                  child: TextField(
+                    key: const Key('profile-age-field'),
+                    controller: _ageController,
+                    keyboardType: TextInputType.number,
+                    onChanged: _controller.updateAge,
+                    decoration: const InputDecoration(hintText: 'Enter age'),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _LabeledField(
                   label: 'Occupation',
                   child: TextField(
                     key: const Key('profile-occupation-field'),
@@ -111,6 +157,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _SectionCard(
               title: 'Medical and Routine',
               children: <Widget>[
+                _LabeledField(
+                  label: 'Comorbidity count',
+                  child: TextField(
+                    key: const Key('profile-comorbidity-count-field'),
+                    controller: _comorbidityCountController,
+                    keyboardType: TextInputType.number,
+                    onChanged: _controller.updateComorbidityCount,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter comorbidity count',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 SwitchListTile(
                   key: const Key('profile-has-comorbidity-switch'),
                   value: state.form.hasComorbidity,
@@ -290,7 +349,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final ProfileFormData form = _controller.state.form;
     _syncTextController(_fullNameController, form.fullName);
     _syncTextController(_patientCodeController, form.patientCode);
+    _syncTextController(_ageController, form.age);
     _syncTextController(_occupationController, form.occupation);
+    _syncTextController(_comorbidityCountController, form.comorbidityCount);
     _syncTextController(_diseaseListController, form.diseaseList);
     _syncTextController(_caregiverNameController, form.caregiverName);
     _syncTextController(_caregiverPhoneController, form.caregiverPhone);

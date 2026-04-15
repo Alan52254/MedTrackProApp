@@ -21,11 +21,15 @@ void main() {
     await tester.tap(find.text('Calendar').last);
     await tester.pumpAndSettle();
     expect(find.text('Calendar'), findsWidgets);
+    expect(
+      find.byKey(const Key('calendar-context-date-field')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Meds').last);
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const Key('prescription-card-rx-metformin')),
+      find.textContaining('Local prescription list for the demo'),
       findsOneWidget,
     );
 
@@ -34,78 +38,126 @@ void main() {
     expect(find.text('Basic Information'), findsOneWidget);
   });
 
-  testWidgets(
-    'calendar shows events for today and updates on date selection',
-    (WidgetTester tester) async {
-      final LocalDemoStore store = LocalDemoStore();
-      final CalendarController calendarController = CalendarController(
-        store: store,
-      );
-      final HomeController homeController = HomeController(store: store);
+  testWidgets('calendar shows events for today and updates on date selection', (
+    WidgetTester tester,
+  ) async {
+    final LocalDemoStore store = LocalDemoStore();
+    final CalendarController calendarController = CalendarController(
+      store: store,
+    );
+    final HomeController homeController = HomeController(store: store);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: CalendarScreen(controller: calendarController),
-          ),
-        ),
-      );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: CalendarScreen(controller: calendarController)),
+      ),
+    );
 
-      // Today's events should be visible (seed data has events for today).
-      expect(
-        find.byKey(const Key('calendar-event-list')),
-        findsOneWidget,
-      );
-      // Omeprazole is scheduled today and active.
-      expect(find.text('Omeprazole'), findsOneWidget);
+    expect(
+      find.byKey(const Key('calendar-context-date-field')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('calendar-context-start-time-field')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('calendar-context-end-time-field')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('calendar-context-activity-field')),
+      findsOneWidget,
+    );
+    expect(find.text('Breakfast'), findsOneWidget);
 
-      // The date strip should be present with today highlighted.
-      final DateTime today = DateTime.now();
-      final Finder todayChip = find.byKey(
-        Key('calendar-date-${today.month}-${today.day}'),
-      );
-      expect(todayChip, findsOneWidget);
+    final Finder calendarScrollable = find.byType(Scrollable).first;
+    await tester.dragUntilVisible(
+      find.byKey(const Key('calendar-event-list')),
+      calendarScrollable,
+      const Offset(0, -300),
+    );
+    expect(find.byKey(const Key('calendar-event-list')), findsOneWidget);
+    expect(find.text('Omeprazole'), findsOneWidget);
 
-      // Tap a date 3 days ago — should have one event (Atorvastatin).
-      final DateTime threeDaysAgo = today.subtract(const Duration(days: 3));
-      final Finder pastChip = find.byKey(
-        Key('calendar-date-${threeDaysAgo.month}-${threeDaysAgo.day}'),
-      );
-      await tester.tap(pastChip);
-      await tester.pumpAndSettle();
-      expect(find.text('Atorvastatin'), findsOneWidget);
+    // The date strip should be present with today highlighted.
+    final DateTime today = DateTime(
+      store.referenceDate.year,
+      store.referenceDate.month,
+      store.referenceDate.day,
+    );
+    final Finder todayChip = find.byKey(
+      Key('calendar-date-${today.month}-${today.day}'),
+    );
+    expect(todayChip, findsOneWidget);
 
-      // Navigate back to today first (today is still visible in the strip
-      // centered on threeDaysAgo, since the strip shows [-3..+3]).
-      await tester.tap(todayChip);
-      await tester.pumpAndSettle();
+    // Tap a date 3 days ago — should have one event (Atorvastatin).
+    final DateTime threeDaysAgo = today.subtract(const Duration(days: 3));
+    final Finder pastChip = find.byKey(
+      Key('calendar-date-${threeDaysAgo.month}-${threeDaysAgo.day}'),
+    );
+    await tester.tap(pastChip);
+    await tester.pumpAndSettle();
+    expect(find.text('Atorvastatin'), findsOneWidget);
 
-      // Now the strip is re-centred on today. Tap a future date.
-      final DateTime futureDate = today.add(const Duration(days: 3));
-      final Finder futureChip = find.byKey(
-        Key('calendar-date-${futureDate.month}-${futureDate.day}'),
-      );
-      await tester.tap(futureChip);
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('calendar-empty-state')),
-        findsOneWidget,
-      );
-      expect(find.text('No medications scheduled'), findsOneWidget);
+    // Navigate back to today first (today is still visible in the strip
+    // centered on threeDaysAgo, since the strip shows [-3..+3]).
+    await tester.tap(todayChip);
+    await tester.pumpAndSettle();
 
-      // Mark an event done via Home controller and verify calendar updates.
-      calendarController.selectDate(today);
-      await tester.pumpAndSettle();
-      homeController.markDone('evt-008');
-      await tester.pumpAndSettle();
-      // The event card should now show 'Done' status.
-      expect(find.text('Done'), findsWidgets);
+    // Now the strip is re-centred on today. Tap a future date.
+    final DateTime futureDate = today.add(const Duration(days: 3));
+    final Finder futureChip = find.byKey(
+      Key('calendar-date-${futureDate.month}-${futureDate.day}'),
+    );
+    await tester.tap(futureChip);
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.byKey(const Key('calendar-empty-state')),
+      calendarScrollable,
+      const Offset(0, -300),
+    );
+    expect(find.byKey(const Key('calendar-empty-state')), findsOneWidget);
+    expect(find.text('No medications scheduled'), findsOneWidget);
 
-      calendarController.dispose();
-      homeController.dispose();
-      store.dispose();
-    },
-  );
+    // Mark an event done via Home controller and verify calendar updates.
+    calendarController.selectDate(today);
+    await tester.pumpAndSettle();
+    homeController.markDone('evt-008');
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.byKey(const Key('calendar-event-list')),
+      calendarScrollable,
+      const Offset(0, 300),
+    );
+    // The event card should now show 'Done' status.
+    expect(find.text('Done'), findsWidgets);
+
+    calendarController.updateContextActivity('Gym session');
+    calendarController.updateContextStartTime('18:00');
+    calendarController.updateContextEndTime('19:00');
+    calendarController.saveContextEvent();
+    await tester.pumpAndSettle();
+    expect(
+      calendarController.state.contextSaveMessage,
+      'Context event saved locally.',
+    );
+    expect(find.text('Gym session'), findsOneWidget);
+    expect(
+      store.calendarContextEvents.any(
+        (event) =>
+            event.date.year == today.year &&
+            event.date.month == today.month &&
+            event.date.day == today.day &&
+            event.activity == 'Gym session',
+      ),
+      isTrue,
+    );
+
+    calendarController.dispose();
+    homeController.dispose();
+    store.dispose();
+  });
 
   testWidgets(
     'delayEventToTime updates event and Calendar centers on delayed date',
@@ -138,9 +190,7 @@ void main() {
       expect(targetDate.day, tomorrow.day);
 
       // The event should now be delayed with originalStart preserved.
-      final event = store.medicationEvents.firstWhere(
-        (e) => e.id == 'evt-008',
-      );
+      final event = store.medicationEvents.firstWhere((e) => e.id == 'evt-008');
       expect(event.status, 'delayed');
       expect(event.scheduledStart.hour, 14);
       expect(event.scheduledStart.minute, 0);
@@ -154,9 +204,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: CalendarScreen(controller: calendarController),
-          ),
+          home: Scaffold(body: CalendarScreen(controller: calendarController)),
         ),
       );
 
@@ -167,6 +215,11 @@ void main() {
       expect(tomorrowChip, findsOneWidget);
 
       // The delayed Metformin event at 14:00 should appear.
+      await tester.dragUntilVisible(
+        find.text('Metformin XR'),
+        find.byType(Scrollable).first,
+        const Offset(0, -300),
+      );
       expect(find.text('Metformin XR'), findsOneWidget);
       expect(find.text('Delayed'), findsOneWidget);
 
@@ -275,6 +328,17 @@ void main() {
       await tester.pumpAndSettle();
 
       final Finder medsScrollable = find.byType(Scrollable).first;
+      await tester.dragUntilVisible(
+        find.text('Glucose control'),
+        medsScrollable,
+        const Offset(0, -300),
+      );
+      expect(find.text('Indication'), findsWidgets);
+      expect(find.text('Glucose control'), findsOneWidget);
+      expect(find.text('Drug interactions'), findsWidgets);
+      expect(find.textContaining('Take with food'), findsOneWidget);
+      expect(find.text('Note'), findsWidgets);
+      expect(find.text('Take with lunch.'), findsOneWidget);
 
       await tester.dragUntilVisible(
         find.byKey(const Key('prescription-card-rx-vitamin-d')),
@@ -351,19 +415,40 @@ void main() {
       final Finder patientCodeField = find.byKey(
         const Key('profile-patient-code-field'),
       );
+      final Finder ageField = find.byKey(const Key('profile-age-field'));
+      final Finder genderField = find.byKey(const Key('profile-gender-field'));
+      final Finder comorbidityCountField = find.byKey(
+        const Key('profile-comorbidity-count-field'),
+      );
       final Finder profileScrollable = find.byType(Scrollable).first;
 
       expect(find.text('Basic Information'), findsOneWidget);
+      expect(genderField, findsOneWidget);
+      expect(ageField, findsOneWidget);
 
       await tester.enterText(fullNameField, 'Jamie Lin');
       await tester.enterText(patientCodeField, 'MTP-99999');
+      await tester.enterText(ageField, '41');
+      profileController.updateGender('Other');
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        comorbidityCountField,
+        profileScrollable,
+        const Offset(0, -300),
+      );
+      await tester.enterText(comorbidityCountField, '3');
       await tester.dragUntilVisible(
         find.byKey(const Key('profile-has-caregiver-switch')),
         profileScrollable,
         const Offset(0, -300),
       );
-      await tester.tap(find.byKey(const Key('profile-has-caregiver-switch')));
+      profileController.updateHasCaregiver(true);
       await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.byKey(const Key('profile-caregiver-name-field')),
+        profileScrollable,
+        const Offset(0, -300),
+      );
       await tester.enterText(
         find.byKey(const Key('profile-caregiver-name-field')),
         'Chris Lin',
@@ -401,6 +486,16 @@ void main() {
 
       await tester.enterText(fullNameField, 'Jamie Lin');
       await tester.enterText(patientCodeField, 'MTP-99999');
+      await tester.enterText(ageField, '41');
+      profileController.updateGender('Other');
+      await tester.dragUntilVisible(
+        comorbidityCountField,
+        profileScrollable,
+        const Offset(0, -300),
+      );
+      await tester.enterText(comorbidityCountField, '3');
+      profileController.updateHasCaregiver(true);
+      await tester.pumpAndSettle();
       await tester.dragUntilVisible(
         find.byKey(const Key('profile-save-button')),
         profileScrollable,
@@ -413,6 +508,10 @@ void main() {
       expect(find.text('Profile saved locally.'), findsOneWidget);
       expect(store.patientProfile.fullName, 'Jamie Lin');
       expect(store.patientProfile.patientCode, 'MTP-99999');
+      expect(store.patientProfile.gender, 'Other');
+      expect(store.patientProfile.age, 41);
+      expect(store.patientProfile.comorbidityCount, 3);
+      expect(store.patientProfile.hasCaregiver, isTrue);
       expect(homeController.state.patientProfile.fullName, 'Jamie Lin');
       expect(profileController.state.form.fullName, 'Jamie Lin');
       expect(profileController.state.form.patientCode, 'MTP-99999');
