@@ -4,6 +4,7 @@ import '../../../core/models/decision_alert.dart';
 import '../../../core/models/medication_event.dart';
 import '../../../core/services/local_demo_store.dart';
 import 'home_state.dart';
+import 'reminder_controller.dart';
 
 class HomeController extends ChangeNotifier {
   HomeController({LocalDemoStore? store})
@@ -16,6 +17,12 @@ class HomeController extends ChangeNotifier {
 
   final LocalDemoStore _store;
   final bool _ownsStore;
+  ReminderController? _reminderController;
+
+  /// Inject a [ReminderController] so that Done/Skip actions cancel reminders.
+  set reminderController(ReminderController? controller) {
+    _reminderController = controller;
+  }
 
   HomeState get state => HomeState(
     referenceDate: _store.referenceDate,
@@ -48,6 +55,7 @@ class HomeController extends ChangeNotifier {
         updatedAt: actionTime,
       ),
     );
+    _reminderController?.cancelReminderForEvent(eventId);
   }
 
   void delayEvent(String eventId, Duration delay) {
@@ -83,10 +91,12 @@ class HomeController extends ChangeNotifier {
       originalStart: event.originalStart ?? event.scheduledStart,
       delayMinutes: totalDelayMinutes,
       status: 'delayed',
+      clearLastReminderTime: true,
       updatedAt: updatedAt,
     );
 
     _store.updateMedicationEvent(delayedEvent);
+    _reminderController?.cancelReminderForEvent(eventId);
 
     final String timeLabel =
         '${targetTime.hour.toString().padLeft(2, '0')}:${targetTime.minute.toString().padLeft(2, '0')}';
@@ -117,6 +127,7 @@ class HomeController extends ChangeNotifier {
     );
 
     _store.updateMedicationEvent(skippedEvent);
+    _reminderController?.cancelReminderForEvent(eventId);
     _store.replaceAlerts(
       _upsertScheduleImpactAlert(
         severity: 'warning',

@@ -11,6 +11,7 @@ class MedicationEvent {
     required this.delayMinutes,
     required this.googleCalendarEventId,
     required this.syncedToGoogleCalendar,
+    required this.lastReminderTime,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -26,6 +27,7 @@ class MedicationEvent {
   final int delayMinutes;
   final String googleCalendarEventId;
   final bool syncedToGoogleCalendar;
+  final DateTime? lastReminderTime;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -43,6 +45,8 @@ class MedicationEvent {
     int? delayMinutes,
     String? googleCalendarEventId,
     bool? syncedToGoogleCalendar,
+    DateTime? lastReminderTime,
+    bool clearLastReminderTime = false,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -64,6 +68,9 @@ class MedicationEvent {
           googleCalendarEventId ?? this.googleCalendarEventId,
       syncedToGoogleCalendar:
           syncedToGoogleCalendar ?? this.syncedToGoogleCalendar,
+      lastReminderTime: clearLastReminderTime
+          ? null
+          : lastReminderTime ?? this.lastReminderTime,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -86,6 +93,9 @@ class MedicationEvent {
       delayMinutes: json['delayMinutes'] as int? ?? 0,
       googleCalendarEventId: json['googleCalendarEventId'] as String? ?? '',
       syncedToGoogleCalendar: json['syncedToGoogleCalendar'] as bool? ?? false,
+      lastReminderTime: json['lastReminderTime'] == null
+          ? null
+          : DateTime.parse(json['lastReminderTime'] as String),
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
@@ -104,6 +114,7 @@ class MedicationEvent {
       'delayMinutes': delayMinutes,
       'googleCalendarEventId': googleCalendarEventId,
       'syncedToGoogleCalendar': syncedToGoogleCalendar,
+      'lastReminderTime': lastReminderTime?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };

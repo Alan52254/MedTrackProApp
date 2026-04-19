@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
-import 'router.dart';
+import '../core/services/reminder_service.dart';
+import 'shell/app_shell.dart';
 import 'theme/app_theme.dart';
 
 class MedTrackProApp extends StatelessWidget {
-  const MedTrackProApp({super.key});
+  const MedTrackProApp({super.key, this.reminderService});
+
+  final ReminderService? reminderService;
 
   @override
   Widget build(BuildContext context) {
@@ -12,8 +15,7 @@ class MedTrackProApp extends StatelessWidget {
       title: 'MedTrack Pro',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      initialRoute: AppRoutes.root,
-      routes: AppRouter.routes,
+      home: AppShell(reminderService: reminderService),
     );
   }
 }

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/models/prescription.dart';
+import '../application/add_medication_controller.dart';
 import '../application/meds_controller.dart';
 import '../application/meds_state.dart';
+import 'add_medication_screen.dart';
 
 class MedsScreen extends StatefulWidget {
   const MedsScreen({super.key, this.controller});
@@ -32,6 +34,20 @@ class _MedsScreenState extends State<MedsScreen> {
     super.dispose();
   }
 
+  Future<void> _openAddMedication() async {
+    final AddMedicationController addController = AddMedicationController(
+      store: _controller.store,
+    );
+
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => AddMedicationScreen(controller: addController),
+      ),
+    );
+
+    addController.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -39,19 +55,35 @@ class _MedsScreenState extends State<MedsScreen> {
       builder: (BuildContext context, Widget? child) {
         final MedsState state = _controller.state;
 
-        return ListView(
-          padding: const EdgeInsets.all(20),
+        return Stack(
           children: <Widget>[
-            _ScreenHeader(state: state),
-            const SizedBox(height: 20),
-            ...state.sortedPrescriptions.map(
-              (Prescription prescription) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _PrescriptionCard(
-                  prescription: prescription,
-                  onChanged: (bool value) =>
-                      _controller.setPrescriptionActive(prescription.id, value),
+            ListView(
+              padding: const EdgeInsets.all(20),
+              children: <Widget>[
+                _ScreenHeader(state: state),
+                const SizedBox(height: 20),
+                ...state.sortedPrescriptions.map(
+                  (Prescription prescription) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _PrescriptionCard(
+                      prescription: prescription,
+                      onChanged: (bool value) => _controller
+                          .setPrescriptionActive(prescription.id, value),
+                    ),
+                  ),
                 ),
+                // Extra padding at bottom for the FAB.
+                const SizedBox(height: 80),
+              ],
+            ),
+            Positioned(
+              right: 20,
+              bottom: 20,
+              child: FloatingActionButton.extended(
+                key: const Key('meds-add-medication-fab'),
+                onPressed: _openAddMedication,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add Medication'),
               ),
             ),
           ],

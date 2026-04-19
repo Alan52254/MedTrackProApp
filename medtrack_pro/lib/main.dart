@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
+import 'core/services/reminder_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MedTrackProApp());
+
+  // Initialize the notification plugin for persistent reminders.
+  final ReminderService reminderService = ReminderService();
+  await reminderService.init();
+
+  runApp(MedTrackProApp(reminderService: reminderService));
 }

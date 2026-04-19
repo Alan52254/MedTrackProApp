@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../core/services/local_demo_store.dart';
-import '../../features/calendar/application/calendar_controller.dart';
+import '../../core/services/reminder_service.dart';
 import '../../features/calendar/presentation/calendar_screen.dart';
+import '../../features/google_calendar_sync/application/google_calendar_controller.dart';
+import '../../features/google_calendar_sync/presentation/google_calendar_screen.dart';
 import '../../features/home/application/home_controller.dart';
+import '../../features/home/application/reminder_controller.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/meds/application/meds_controller.dart';
 import '../../features/meds/presentation/meds_screen.dart';
@@ -28,7 +31,9 @@ enum AppTab {
 }
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({super.key, this.reminderService});
+
+  final ReminderService? reminderService;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -37,9 +42,10 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   late final LocalDemoStore _localDemoStore;
   late final HomeController _homeController;
-  late final CalendarController _calendarController;
   late final MedsController _medsController;
   late final ProfileController _profileController;
+  late final GoogleCalendarController _googleCalendarController;
+  late final ReminderController _reminderController;
   int _selectedIndex = 0;
 
   late final List<Widget> _screens;
@@ -49,15 +55,23 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     _localDemoStore = LocalDemoStore();
     _homeController = HomeController(store: _localDemoStore);
-    _calendarController = CalendarController(store: _localDemoStore);
     _medsController = MedsController(store: _localDemoStore);
     _profileController = ProfileController(store: _localDemoStore);
+    _googleCalendarController = GoogleCalendarController(
+      store: _localDemoStore,
+    );
+    _reminderController = ReminderController(
+      store: _localDemoStore,
+      reminderService: widget.reminderService,
+    );
+    _homeController.reminderController = _reminderController;
+
     _screens = <Widget>[
       HomeScreen(
         controller: _homeController,
         onDelayNavigateToCalendar: _navigateToCalendarDate,
       ),
-      CalendarScreen(controller: _calendarController),
+      CalendarScreen(onGoogleCalendarTap: _openGoogleCalendar),
       MedsScreen(controller: _medsController),
       ProfileScreen(controller: _profileController),
     ];
@@ -65,8 +79,9 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    _reminderController.dispose();
+    _googleCalendarController.dispose();
     _homeController.dispose();
-    _calendarController.dispose();
     _medsController.dispose();
     _profileController.dispose();
     _localDemoStore.dispose();
@@ -76,10 +91,18 @@ class _AppShellState extends State<AppShell> {
   AppTab get _currentTab => AppTab.values[_selectedIndex];
 
   void _navigateToCalendarDate(DateTime date) {
-    _calendarController.selectDate(date);
     setState(() {
       _selectedIndex = AppTab.calendar.index;
     });
+  }
+
+  void _openGoogleCalendar() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            GoogleCalendarScreen(controller: _googleCalendarController),
+      ),
+    );
   }
 
   @override
@@ -92,7 +115,7 @@ class _AppShellState extends State<AppShell> {
             padding: EdgeInsets.only(right: 16),
             child: Center(
               child: Text(
-                'Phase 1',
+                'Phase 2-lite',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ),

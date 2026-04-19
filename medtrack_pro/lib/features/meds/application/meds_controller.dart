@@ -14,6 +14,9 @@ class MedsController extends ChangeNotifier {
   final LocalDemoStore _store;
   final bool _ownsStore;
 
+  /// Expose the store for child controllers (e.g. AddMedicationController).
+  LocalDemoStore get store => _store;
+
   MedsState get state => MedsState(prescriptions: _store.prescriptions);
 
   @override

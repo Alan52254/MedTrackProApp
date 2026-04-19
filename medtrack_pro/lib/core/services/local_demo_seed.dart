@@ -7,6 +7,7 @@ import '../models/prescription.dart';
 class LocalDemoSeedData {
   const LocalDemoSeedData({
     required this.referenceDate,
+    required this.reminderIntervalMinutes,
     required this.patientProfile,
     required this.prescriptions,
     required this.medicationEvents,
@@ -15,6 +16,7 @@ class LocalDemoSeedData {
   });
 
   final DateTime referenceDate;
+  final int reminderIntervalMinutes;
   final PatientProfile patientProfile;
   final List<Prescription> prescriptions;
   final List<MedicationEvent> medicationEvents;
@@ -24,6 +26,8 @@ class LocalDemoSeedData {
 
 class LocalDemoSeed {
   const LocalDemoSeed._();
+
+  static const int defaultReminderIntervalMinutes = 30;
 
   static LocalDemoSeedData build() {
     final DateTime referenceDate = DateTime.now();
@@ -295,6 +299,7 @@ class LocalDemoSeed {
 
     return LocalDemoSeedData(
       referenceDate: referenceDate,
+      reminderIntervalMinutes: defaultReminderIntervalMinutes,
       patientProfile: patientProfile,
       prescriptions: prescriptions,
       medicationEvents: medicationEvents,
@@ -335,6 +340,7 @@ class LocalDemoSeed {
       delayMinutes: 0,
       googleCalendarEventId: '',
       syncedToGoogleCalendar: false,
+      lastReminderTime: null,
       createdAt: scheduledStart.subtract(const Duration(days: 1)),
       updatedAt: scheduledStart,
     );
