@@ -60,6 +60,9 @@ class _AppShellState extends State<AppShell> {
     _googleCalendarController = GoogleCalendarController(
       store: _localDemoStore,
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _googleCalendarController.initialize();
+    });
     _reminderController = ReminderController(
       store: _localDemoStore,
       reminderService: widget.reminderService,

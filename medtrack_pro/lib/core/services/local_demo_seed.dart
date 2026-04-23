@@ -36,6 +36,10 @@ class LocalDemoSeed {
       referenceDate.month,
       referenceDate.day,
     );
+    final DateTime demoOverdueStart = _buildDemoOverdueStart(
+      referenceDate: referenceDate,
+      startOfToday: startOfToday,
+    );
     final PatientProfile patientProfile = PatientProfile(
       id: 'patient-001',
       authUserId: 'local-demo-user',
@@ -216,15 +220,21 @@ class LocalDemoSeed {
         status: 'done',
         referenceDate: startOfToday,
       ),
-      _buildEvent(
+      MedicationEvent(
         id: 'evt-008',
         patientId: patientProfile.id,
         prescriptionId: 'rx-metformin',
-        dayOffset: 0,
-        hour: 12,
-        minute: 30,
+        scheduledStart: demoOverdueStart,
+        scheduledEnd: demoOverdueStart.add(const Duration(minutes: 30)),
+        actualTakenAt: null,
         status: 'pending',
-        referenceDate: startOfToday,
+        originalStart: null,
+        delayMinutes: 0,
+        googleCalendarEventId: '',
+        syncedToGoogleCalendar: false,
+        lastReminderTime: null,
+        createdAt: demoOverdueStart.subtract(const Duration(days: 1)),
+        updatedAt: demoOverdueStart,
       ),
       _buildEvent(
         id: 'evt-009',
@@ -306,6 +316,23 @@ class LocalDemoSeed {
       calendarContextEvents: calendarContextEvents,
       alerts: alerts,
     );
+  }
+
+  static DateTime _buildDemoOverdueStart({
+    required DateTime referenceDate,
+    required DateTime startOfToday,
+  }) {
+    final DateTime candidate = referenceDate.subtract(
+      const Duration(minutes: 15),
+    );
+    final bool sameDay =
+        candidate.year == startOfToday.year &&
+        candidate.month == startOfToday.month &&
+        candidate.day == startOfToday.day;
+    if (sameDay) {
+      return candidate;
+    }
+    return startOfToday.add(const Duration(minutes: 1));
   }
 
   static MedicationEvent _buildEvent({

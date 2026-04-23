@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/models/decision_alert.dart';
 import '../application/home_controller.dart';
 import '../application/home_state.dart';
 import '../domain/home_view_models.dart';
+import 'widgets/home_reminder_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -13,9 +13,6 @@ class HomeScreen extends StatefulWidget {
   });
 
   final HomeController? controller;
-
-  /// Called after a delay action completes. Receives the target date so that
-  /// the app shell can switch to the Calendar tab and auto-select the date.
   final ValueChanged<DateTime>? onDelayNavigateToCalendar;
 
   @override
@@ -25,6 +22,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late final HomeController _controller;
   late final bool _ownsController;
+  bool _isDelaySheetOpen = false;
 
   @override
   void initState() {
@@ -47,98 +45,126 @@ class _HomeScreenState extends State<HomeScreen> {
       animation: _controller,
       builder: (BuildContext context, Widget? child) {
         final HomeState state = _controller.state;
+        final HomeReminderViewModel? activeReminder = state.activeReminder;
+        final bool shouldShowReminder =
+            activeReminder != null && !_isDelaySheetOpen;
+        final HomeReminderViewModel? reminder = shouldShowReminder
+            ? activeReminder
+            : null;
 
-        return ListView(
-          padding: const EdgeInsets.all(20),
+        return Stack(
           children: <Widget>[
-            _TodayHeader(state: state),
-            const SizedBox(height: 20),
-            _AdherenceSummaryCard(state: state),
-            const SizedBox(height: 20),
-            _AlertSection(
-              alerts: state.visibleAlerts,
-              onDismiss: _controller.dismissAlert,
-              onAction: _controller.handleAlertAction,
+            ListView(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                shouldShowReminder ? 260 : 24,
+              ),
+              children: <Widget>[
+                _TodayHeader(state: state),
+                const SizedBox(height: 20),
+                _NextMedicationCard(
+                  entry: state.nextMedication,
+                  onDone: (String eventId) => _controller.markDone(eventId),
+                  onDelay: _showDelayOptions,
+                  onSkip: (HomeMedicationViewModel entry) =>
+                      _controller.skipEvent(entry.event.id),
+                ),
+                if (state.scheduleAdjustmentMessage.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 12),
+                  Text(
+                    state.scheduleAdjustmentMessage,
+                    key: const Key('schedule-adjusted-banner'),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                _TimelineSection(entries: state.todayTimeline),
+              ],
             ),
-            const SizedBox(height: 20),
-            _NextMedicationCard(
-              entry: state.nextMedication,
-              onDone: (String eventId) => _controller.markDone(eventId),
-              onDelay: _showDelayTimePicker,
-              onSkip: _confirmSkip,
-            ),
-            const SizedBox(height: 20),
-            _TimelineSection(entries: state.todayTimeline),
+            if (reminder != null)
+              Align(
+                alignment: Alignment.center,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: HomeReminderCard(
+                    reminder: reminder,
+                    reminderIntervalMinutes:
+                        _controller.reminderIntervalMinutes,
+                    onDone: () => _controller.markDone(reminder.entry.event.id),
+                    onRemindLater: () =>
+                        _controller.snoozeReminder(reminder.entry.event.id),
+                    onSkip: () =>
+                        _controller.skipEvent(reminder.entry.event.id),
+                  ),
+                ),
+              ),
           ],
         );
       },
     );
   }
 
-  Future<void> _showDelayTimePicker(HomeMedicationViewModel entry) async {
-    final TimeOfDay initialTime = TimeOfDay.fromDateTime(
-      entry.event.scheduledStart.add(const Duration(minutes: 30)),
-    );
-
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: initialTime,
-      helpText: 'Delay ${entry.prescription.drugName} to…',
-    );
-
-    if (picked == null || !mounted) {
+  Future<void> _showDelayOptions(HomeMedicationViewModel entry) async {
+    if (_isDelaySheetOpen) {
       return;
     }
 
-    // Build the target DateTime. If the picked time is earlier than the
-    // current scheduledStart, assume the user means tomorrow.
-    DateTime targetTime = DateTime(
-      entry.event.scheduledStart.year,
-      entry.event.scheduledStart.month,
-      entry.event.scheduledStart.day,
-      picked.hour,
-      picked.minute,
-    );
-    if (!targetTime.isAfter(entry.event.scheduledStart)) {
-      targetTime = targetTime.add(const Duration(days: 1));
-    }
+    setState(() {
+      _isDelaySheetOpen = true;
+    });
 
-    final DateTime? targetDate = _controller.delayEventToTime(
-      entry.event.id,
-      targetTime,
-    );
-
-    if (targetDate != null) {
-      widget.onDelayNavigateToCalendar?.call(targetDate);
-    }
-  }
-
-  Future<void> _confirmSkip(HomeMedicationViewModel entry) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Skip this dose?'),
-          content: Text(
-            'Mark ${entry.prescription.drugName} as skipped for today. '
-            'This local demo will update the card state and raise a schedule impact alert.',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+    try {
+      final Duration? selectedDelay = await showModalBottomSheet<Duration>(
+        context: context,
+        builder: (BuildContext context) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ListTile(
+                  key: const Key('home-delay-option-15'),
+                  leading: const Icon(Icons.schedule_rounded),
+                  title: const Text('Delay +15 minutes'),
+                  onTap: () =>
+                      Navigator.of(context).pop(const Duration(minutes: 15)),
+                ),
+                ListTile(
+                  key: const Key('home-delay-option-30'),
+                  leading: const Icon(Icons.schedule_rounded),
+                  title: const Text('Delay +30 minutes'),
+                  onTap: () =>
+                      Navigator.of(context).pop(const Duration(minutes: 30)),
+                ),
+                ListTile(
+                  key: const Key('home-delay-option-60'),
+                  leading: const Icon(Icons.schedule_rounded),
+                  title: const Text('Delay +1 hour'),
+                  onTap: () =>
+                      Navigator.of(context).pop(const Duration(hours: 1)),
+                ),
+              ],
             ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Skip dose'),
-            ),
-          ],
-        );
-      },
-    );
+          );
+        },
+      );
 
-    if (confirmed ?? false) {
-      _controller.skipEvent(entry.event.id);
+      if (!mounted || selectedDelay == null) {
+        return;
+      }
+      _controller.delayEvent(entry.event.id, selectedDelay);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDelaySheetOpen = false;
+        });
+      } else {
+        _isDelaySheetOpen = false;
+      }
     }
   }
 }
@@ -169,14 +195,14 @@ class _TodayHeader extends StatelessWidget {
           'Today\'s Medications',
           style: Theme.of(context).textTheme.headlineMedium,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Text(
-          '${_formatLongDate(state.referenceDate)} - $firstName\'s local demo flow',
+          '${_formatLongDate(state.referenceDate)} - $firstName',
           style: Theme.of(
             context,
           ).textTheme.bodyLarge?.copyWith(color: colorScheme.onSurfaceVariant),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -186,12 +212,8 @@ class _TodayHeader extends StatelessWidget {
               label: state.patientProfile.patientCode,
             ),
             _HeaderBadge(
-              icon: Icons.notifications_active_rounded,
-              label: '${state.visibleAlerts.length} active alerts',
-            ),
-            _HeaderBadge(
-              icon: Icons.today_rounded,
-              label: '${state.todayTimeline.length} doses scheduled today',
+              icon: Icons.medication_liquid_rounded,
+              label: '${state.pendingCount} pending today',
             ),
           ],
         ),
@@ -234,202 +256,6 @@ class _HeaderBadge extends StatelessWidget {
   }
 }
 
-class _AdherenceSummaryCard extends StatelessWidget {
-  const _AdherenceSummaryCard({required this.state});
-
-  final HomeState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              '7-Day Adherence Summary',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: <Widget>[
-                Text(
-                  '${state.adherencePercent}%',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(width: 12),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '${state.completedDoseCount} completed - ${state.skippedDoseCount} skipped',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                minHeight: 10,
-                value: state.adherenceProgress,
-                backgroundColor: colorScheme.surfaceContainerHighest,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'This sample summary updates as today\'s dose statuses move between done and skipped.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AlertSection extends StatelessWidget {
-  const _AlertSection({
-    required this.alerts,
-    required this.onDismiss,
-    required this.onAction,
-  });
-
-  final List<DecisionAlert> alerts;
-  final ValueChanged<String> onDismiss;
-  final void Function(String alertId, String actionLabel) onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text('Alerts', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        if (alerts.isEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                'No active alerts right now.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ),
-          )
-        else
-          ...alerts.map(
-            (DecisionAlert alert) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _AlertCard(
-                alert: alert,
-                onDismiss: onDismiss,
-                onAction: onAction,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _AlertCard extends StatelessWidget {
-  const _AlertCard({
-    required this.alert,
-    required this.onDismiss,
-    required this.onAction,
-  });
-
-  final DecisionAlert alert;
-  final ValueChanged<String> onDismiss;
-  final void Function(String alertId, String actionLabel) onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final _SeverityStyle severityStyle = _severityFor(
-      alert.severity,
-      colorScheme,
-    );
-
-    return Card(
-      key: Key('alert-${alert.id}'),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: severityStyle.backgroundColor,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    alert.severity.toUpperCase(),
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: severityStyle.foregroundColor,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  key: Key('dismiss-alert-${alert.id}'),
-                  onPressed: () => onDismiss(alert.id),
-                  tooltip: 'Dismiss alert',
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
-            ),
-            Text(alert.title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Text(
-              alert.explanation,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              alert.recommendation,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (alert.actionButtons.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: alert.actionButtons
-                    .map(
-                      (String actionLabel) => TextButton(
-                        onPressed: () => onAction(alert.id, actionLabel),
-                        child: Text(actionLabel),
-                      ),
-                    )
-                    .toList(growable: false),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _NextMedicationCard extends StatelessWidget {
   const _NextMedicationCard({
     required this.entry,
@@ -445,6 +271,8 @@ class _NextMedicationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -463,7 +291,7 @@ class _NextMedicationCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'No more actionable doses remain in the local sample timeline.',
+                    'No more medications need attention right now.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ],
@@ -476,59 +304,41 @@ class _NextMedicationCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              key: const Key('next-medication-drug'),
-                              entry!.prescription.drugName,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${_formatTime(entry!.event.scheduledStart)} - ${entry!.doseLine}',
-                              style: Theme.of(context).textTheme.bodyLarge,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              entry!.instructionLine,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              entry!.detailLine,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                            ),
-                            if (entry!.event.originalStart != null) ...<Widget>[
-                              const SizedBox(height: 4),
-                              Text(
-                                'Original time: ${_formatTime(entry!.event.originalStart!)}',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
-                              ),
-                            ],
-                          ],
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer.withValues(
+                        alpha: 0.55,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          key: const Key('next-medication-drug'),
+                          entry!.prescription.drugName,
+                          style: Theme.of(context).textTheme.headlineSmall,
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      _StatusChip(
-                        key: const Key('next-medication-status'),
-                        status: entry!.event.status,
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          '${_formatTime(entry!.event.scheduledStart)} - ${entry!.doseLine}',
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          entry!.instructionLine,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          entry!.detailLine,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Wrap(
@@ -569,7 +379,10 @@ class _TimelineSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Today Timeline', style: Theme.of(context).textTheme.titleLarge),
+        Text(
+          'Today\'s Medications',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
         const SizedBox(height: 12),
         ...entries.map(
           (HomeMedicationViewModel entry) => Padding(
@@ -589,57 +402,39 @@ class _TimelineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
+        padding: const EdgeInsets.all(18),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        entry.prescription.drugName,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${_formatTime(entry.event.scheduledStart)} - ${entry.doseLine}',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        entry.instructionLine,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (entry.event.originalStart != null) ...<Widget>[
-                        const SizedBox(height: 4),
-                        Text(
-                          'Original: ${_formatTime(entry.event.originalStart!)}',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
-                        ),
-                      ],
-                    ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    entry.prescription.drugName,
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
-                ),
-                const SizedBox(width: 12),
-                _StatusChip(
-                  key: Key('timeline-status-${entry.event.id}'),
-                  status: entry.event.status,
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    '${_formatTime(entry.event.scheduledStart)} - ${entry.doseLine}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    entry.instructionLine,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 12),
+            _StatusChip(statusLabel: entry.timelineStatusLabel),
           ],
         ),
       ),
@@ -648,42 +443,47 @@ class _TimelineCard extends StatelessWidget {
 }
 
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({super.key, required this.status});
+  const _StatusChip({required this.statusLabel});
 
-  final String status;
+  final String statusLabel;
 
   @override
   Widget build(BuildContext context) {
-    final _SeverityStyle style = _statusStyle(
-      status,
-      Theme.of(context).colorScheme,
-    );
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    Color backgroundColor = colorScheme.surfaceContainerHighest;
+    Color foregroundColor = colorScheme.onSurfaceVariant;
+
+    switch (statusLabel) {
+      case 'Done':
+        backgroundColor = colorScheme.secondaryContainer;
+        foregroundColor = colorScheme.onSecondaryContainer;
+        break;
+      case 'Delayed':
+        backgroundColor = const Color(0xFFFFE8B2);
+        foregroundColor = const Color(0xFF7A4B00);
+        break;
+      case 'Skipped':
+      case 'Reschedule':
+        backgroundColor = colorScheme.errorContainer;
+        foregroundColor = colorScheme.onErrorContainer;
+        break;
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: style.backgroundColor,
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        _statusLabel(status),
+        statusLabel,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: style.foregroundColor,
+          color: foregroundColor,
           fontWeight: FontWeight.w700,
         ),
       ),
     );
   }
-}
-
-class _SeverityStyle {
-  const _SeverityStyle({
-    required this.backgroundColor,
-    required this.foregroundColor,
-  });
-
-  final Color backgroundColor;
-  final Color foregroundColor;
 }
 
 String _formatLongDate(DateTime value) {
@@ -719,62 +519,4 @@ String _formatTime(DateTime value) {
   final String minute = value.minute.toString().padLeft(2, '0');
   final String meridiem = value.hour >= 12 ? 'PM' : 'AM';
   return '$normalizedHour:$minute $meridiem';
-}
-
-String _statusLabel(String status) {
-  switch (status) {
-    case 'done':
-      return 'Done';
-    case 'delayed':
-      return 'Delayed';
-    case 'skipped':
-      return 'Skipped';
-    default:
-      return 'Pending';
-  }
-}
-
-_SeverityStyle _severityFor(String severity, ColorScheme colorScheme) {
-  switch (severity) {
-    case 'critical':
-      return _SeverityStyle(
-        backgroundColor: colorScheme.errorContainer,
-        foregroundColor: colorScheme.onErrorContainer,
-      );
-    case 'warning':
-      return _SeverityStyle(
-        backgroundColor: const Color(0xFFFFE8B2),
-        foregroundColor: const Color(0xFF7A4B00),
-      );
-    default:
-      return _SeverityStyle(
-        backgroundColor: colorScheme.primaryContainer,
-        foregroundColor: colorScheme.onPrimaryContainer,
-      );
-  }
-}
-
-_SeverityStyle _statusStyle(String status, ColorScheme colorScheme) {
-  switch (status) {
-    case 'done':
-      return _SeverityStyle(
-        backgroundColor: colorScheme.secondaryContainer,
-        foregroundColor: colorScheme.onSecondaryContainer,
-      );
-    case 'delayed':
-      return const _SeverityStyle(
-        backgroundColor: Color(0xFFFFE8B2),
-        foregroundColor: Color(0xFF7A4B00),
-      );
-    case 'skipped':
-      return _SeverityStyle(
-        backgroundColor: colorScheme.errorContainer,
-        foregroundColor: colorScheme.onErrorContainer,
-      );
-    default:
-      return _SeverityStyle(
-        backgroundColor: colorScheme.surfaceContainerHighest,
-        foregroundColor: colorScheme.onSurfaceVariant,
-      );
-  }
 }

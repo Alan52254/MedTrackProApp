@@ -28,6 +28,19 @@ class GoogleCalendarController extends ChangeNotifier {
   String _syncMessage = '';
   String _connectionError = '';
   bool _isSyncing = false;
+  bool _disposed = false;
+
+  Future<void> initialize() async {
+    await _service.restorePreviousSignIn();
+    if (_disposed) {
+      return;
+    }
+    if (_service.isSignedIn) {
+      _connectionState = GoogleCalendarConnectionState.connected;
+      _connectionError = '';
+    }
+    notifyListeners();
+  }
 
   GoogleCalendarState get state => GoogleCalendarState(
     connectionState: _connectionState,
@@ -47,6 +60,9 @@ class GoogleCalendarController extends ChangeNotifier {
   );
 
   Future<void> connectGoogle() async {
+    if (_disposed) {
+      return;
+    }
     _connectionState = GoogleCalendarConnectionState.connecting;
     _syncState = GoogleCalendarSyncState.idle;
     _syncMessage = '';
@@ -54,6 +70,9 @@ class GoogleCalendarController extends ChangeNotifier {
     notifyListeners();
 
     final GoogleCalendarSignInResult result = await _service.signIn();
+    if (_disposed) {
+      return;
+    }
 
     switch (result.status) {
       case GoogleCalendarSignInStatus.success:
@@ -81,6 +100,9 @@ class GoogleCalendarController extends ChangeNotifier {
 
   Future<void> disconnectGoogle() async {
     await _service.signOut();
+    if (_disposed) {
+      return;
+    }
     _connectionState = GoogleCalendarConnectionState.demoMode;
     _syncState = GoogleCalendarSyncState.idle;
     _connectionError = '';
@@ -114,6 +136,9 @@ class GoogleCalendarController extends ChangeNotifier {
   }
 
   Future<void> createActivity() async {
+    if (_disposed) {
+      return;
+    }
     if (_formTitle.trim().isEmpty) {
       _syncState = GoogleCalendarSyncState.syncFailed;
       _syncMessage = 'Activity title is required.';
@@ -147,6 +172,9 @@ class GoogleCalendarController extends ChangeNotifier {
         start: activity.startTime,
         end: activity.endTime,
       );
+      if (_disposed) {
+        return;
+      }
 
       _isSyncing = false;
 
@@ -197,6 +225,7 @@ class GoogleCalendarController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _store.removeListener(_handleStoreChanged);
     super.dispose();
   }
@@ -216,6 +245,9 @@ class GoogleCalendarController extends ChangeNotifier {
   }
 
   void _handleStoreChanged() {
+    if (_disposed) {
+      return;
+    }
     notifyListeners();
   }
 }

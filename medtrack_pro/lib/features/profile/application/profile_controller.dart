@@ -78,17 +78,6 @@ class ProfileController extends ChangeNotifier {
     );
   }
 
-  void updateHasCaregiver(bool value) {
-    _updateForm(
-      _state.form.copyWith(
-        hasCaregiver: value,
-        caregiverName: value ? _state.form.caregiverName : '',
-        caregiverPhone: value ? _state.form.caregiverPhone : '',
-      ),
-      clearSaveMessage: true,
-    );
-  }
-
   void updateCaregiverName(String value) {
     _updateForm(
       _state.form.copyWith(caregiverName: value),
@@ -135,11 +124,15 @@ class ProfileController extends ChangeNotifier {
   }
 
   void resetForm() {
-    _state = _buildState(_store.patientProfile);
-    notifyListeners();
+    _store.resetAll();
   }
 
   void save() {
+    final String caregiverName = _state.form.caregiverName.trim();
+    final String caregiverPhone = _state.form.caregiverPhone.trim();
+    final bool hasCaregiver =
+        caregiverName.isNotEmpty || caregiverPhone.isNotEmpty;
+
     final PatientProfile updatedProfile = _state.savedProfile.copyWith(
       fullName: _state.form.fullName.trim(),
       patientCode: _state.form.patientCode.trim(),
@@ -156,13 +149,9 @@ class ProfileController extends ChangeNotifier {
       diseaseList: _state.form.hasComorbidity
           ? _parseDiseaseList(_state.form.diseaseList)
           : const <String>[],
-      hasCaregiver: _state.form.hasCaregiver,
-      caregiverName: _state.form.hasCaregiver
-          ? _state.form.caregiverName.trim()
-          : '',
-      caregiverPhone: _state.form.hasCaregiver
-          ? _state.form.caregiverPhone.trim()
-          : '',
+      hasCaregiver: hasCaregiver,
+      caregiverName: caregiverName,
+      caregiverPhone: caregiverPhone,
       wakeTime: _state.form.wakeTime,
       breakfastTime: _state.form.breakfastTime,
       lunchTime: _state.form.lunchTime,
@@ -213,12 +202,7 @@ class ProfileController extends ChangeNotifier {
   }
 
   void _handleStoreChanged() {
-    final PatientProfile profile = _store.patientProfile;
-    if (identical(profile, _state.savedProfile)) {
-      return;
-    }
-
-    _state = _buildState(profile);
+    _state = _buildState(_store.patientProfile);
     notifyListeners();
   }
 }

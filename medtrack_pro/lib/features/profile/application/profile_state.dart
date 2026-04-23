@@ -10,7 +10,6 @@ class ProfileFormData {
     required this.comorbidityCount,
     required this.hasComorbidity,
     required this.diseaseList,
-    required this.hasCaregiver,
     required this.caregiverName,
     required this.caregiverPhone,
     required this.wakeTime,
@@ -28,7 +27,6 @@ class ProfileFormData {
   final String comorbidityCount;
   final bool hasComorbidity;
   final String diseaseList;
-  final bool hasCaregiver;
   final String caregiverName;
   final String caregiverPhone;
   final String wakeTime;
@@ -47,7 +45,6 @@ class ProfileFormData {
       comorbidityCount: profile.comorbidityCount.toString(),
       hasComorbidity: profile.hasComorbidity,
       diseaseList: profile.diseaseList.join(', '),
-      hasCaregiver: profile.hasCaregiver,
       caregiverName: profile.caregiverName,
       caregiverPhone: profile.caregiverPhone,
       wakeTime: profile.wakeTime,
@@ -67,7 +64,6 @@ class ProfileFormData {
     String? comorbidityCount,
     bool? hasComorbidity,
     String? diseaseList,
-    bool? hasCaregiver,
     String? caregiverName,
     String? caregiverPhone,
     String? wakeTime,
@@ -85,7 +81,6 @@ class ProfileFormData {
       comorbidityCount: comorbidityCount ?? this.comorbidityCount,
       hasComorbidity: hasComorbidity ?? this.hasComorbidity,
       diseaseList: diseaseList ?? this.diseaseList,
-      hasCaregiver: hasCaregiver ?? this.hasCaregiver,
       caregiverName: caregiverName ?? this.caregiverName,
       caregiverPhone: caregiverPhone ?? this.caregiverPhone,
       wakeTime: wakeTime ?? this.wakeTime,
