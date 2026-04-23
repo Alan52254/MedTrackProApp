@@ -73,6 +73,15 @@ class GoogleCalendarService {
   bool get isSignedIn => _currentUser != null;
   String get userEmail => _currentUser?.email ?? '';
 
+  Future<void> restorePreviousSignIn() async {
+    try {
+      _currentUser =
+          _googleSignIn.currentUser ?? await _googleSignIn.signInSilently();
+    } catch (_) {
+      _currentUser = null;
+    }
+  }
+
   /// Trigger the Google OAuth sign-in flow.
   Future<GoogleCalendarSignInResult> signIn() async {
     try {

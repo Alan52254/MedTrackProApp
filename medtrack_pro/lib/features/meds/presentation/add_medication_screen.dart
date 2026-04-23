@@ -24,6 +24,7 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   late final TextEditingController _indicationController;
   late final TextEditingController _drugInteractionsController;
   late final TextEditingController _noteController;
+  bool _isPopping = false;
 
   @override
   void initState() {
@@ -53,13 +54,40 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   }
 
   void _handleControllerChange() {
-    // Auto-pop if saved successfully.
-    if (widget.controller.state.isSaved && mounted) {
+    _syncControllers(widget.controller.state.form);
+    if (widget.controller.state.isSaved && mounted && !_isPopping) {
+      _isPopping = true;
       Navigator.of(context).pop(true);
     }
   }
 
+  void _syncControllers(AddMedicationFormData form) {
+    if (_drugNameController.text != form.drugName) {
+      _drugNameController.text = form.drugName;
+    }
+    if (_doseController.text != form.dose) {
+      _doseController.text = form.dose;
+    }
+    if (_durationDaysController.text != form.durationDays) {
+      _durationDaysController.text = form.durationDays;
+    }
+    if (_indicationController.text != form.indication) {
+      _indicationController.text = form.indication;
+    }
+    if (_drugInteractionsController.text != form.drugInteractions) {
+      _drugInteractionsController.text = form.drugInteractions;
+    }
+    if (_noteController.text != form.note) {
+      _noteController.text = form.note;
+    }
+  }
+
   Future<void> _pickImage(ImageSource source) async {
+    final String sourceLabel = source == ImageSource.camera
+        ? 'camera'
+        : 'gallery';
+    widget.controller.beginImagePicking(sourceLabel);
+
     try {
       final XFile? file = await _imagePicker.pickImage(
         source: source,
@@ -68,23 +96,25 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
         imageQuality: 85,
       );
 
-      if (file != null) {
-        final String sourceLabel = source == ImageSource.camera
-            ? 'camera'
-            : 'gallery';
-        widget.controller.setImage(file.path, sourceLabel);
+      if (!mounted) {
+        return;
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Image picker error: $e')));
+
+      if (file == null) {
+        widget.controller.cancelImagePicking();
+        return;
       }
+
+      widget.controller.setImage(file.path, sourceLabel);
+    } catch (_) {
+      widget.controller.failImagePicking(
+        'Unable to access the selected image. You can continue entering medication details manually.',
+      );
     }
   }
 
-  void _showImageSourceDialog() {
-    showModalBottomSheet<void>(
+  Future<void> _showImageSourceDialog() async {
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (BuildContext context) {
         return SafeArea(
@@ -97,20 +127,29 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                   key: const Key('add-med-camera-option'),
                   leading: const Icon(Icons.camera_alt_rounded),
                   title: const Text('Take a photo'),
-                  subtitle: const Text('Scan prescription (UI only — no OCR)'),
+                  subtitle: const Text(
+                    'Capture a prescription photo to autofill this form.',
+                  ),
                   onTap: () {
-                    Navigator.of(context).pop();
-                    _pickImage(ImageSource.camera);
+                    Navigator.of(context).pop(ImageSource.camera);
                   },
                 ),
                 ListTile(
                   key: const Key('add-med-gallery-option'),
                   leading: const Icon(Icons.photo_library_rounded),
                   title: const Text('Choose from gallery'),
+                  subtitle: const Text(
+                    'Select an existing prescription image for extraction.',
+                  ),
                   onTap: () {
-                    Navigator.of(context).pop();
-                    _pickImage(ImageSource.gallery);
+                    Navigator.of(context).pop(ImageSource.gallery);
                   },
+                ),
+                ListTile(
+                  key: const Key('add-med-cancel-image-option'),
+                  leading: const Icon(Icons.close_rounded),
+                  title: const Text('Cancel'),
+                  onTap: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
@@ -118,6 +157,12 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
         );
       },
     );
+
+    if (!mounted || source == null) {
+      return;
+    }
+
+    await _pickImage(source);
   }
 
   @override
@@ -133,16 +178,15 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
           body: ListView(
             padding: const EdgeInsets.all(20),
             children: <Widget>[
-              // Image section
               _ImageSection(
-                imagePath: state.form.imagePath,
-                imageSource: state.form.imageSource,
+                state: state,
                 onPickImage: _showImageSourceDialog,
                 onClearImage: widget.controller.clearImage,
+                onRunOcr: state.hasAttachedImage && !state.isRunningOcr
+                    ? widget.controller.extractFromSelectedImage
+                    : null,
               ),
               const SizedBox(height: 20),
-
-              // Form fields
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
@@ -165,7 +209,9 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
-                        key: const Key('add-med-frequency-field'),
+                        key: Key(
+                          'add-med-frequency-field-${state.form.commonFrequency}',
+                        ),
                         initialValue: state.form.commonFrequency,
                         decoration: const InputDecoration(
                           labelText: 'Common frequency',
@@ -251,30 +297,23 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 16),
-
-              // Save message
-              if (state.saveMessage.isNotEmpty) ...<Widget>[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    state.saveMessage,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+              if (state.errorMessage.isNotEmpty) ...<Widget>[
+                _MessageBanner(
+                  message: state.errorMessage,
+                  backgroundColor: colorScheme.errorContainer,
+                  foregroundColor: colorScheme.onErrorContainer,
                 ),
                 const SizedBox(height: 16),
               ],
-
-              // Action buttons
+              if (state.saveMessage.isNotEmpty) ...<Widget>[
+                _MessageBanner(
+                  message: state.saveMessage,
+                  backgroundColor: colorScheme.primaryContainer,
+                  foregroundColor: colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(height: 16),
+              ],
               Row(
                 children: <Widget>[
                   Expanded(
@@ -313,20 +352,22 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
 
 class _ImageSection extends StatelessWidget {
   const _ImageSection({
-    required this.imagePath,
-    required this.imageSource,
+    required this.state,
     required this.onPickImage,
     required this.onClearImage,
+    required this.onRunOcr,
   });
 
-  final String imagePath;
-  final String imageSource;
+  final AddMedicationState state;
   final VoidCallback onPickImage;
   final VoidCallback onClearImage;
+  final Future<void> Function()? onRunOcr;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final String imagePath = state.form.imagePath;
+    final String imageSource = state.form.imageSource;
 
     return Card(
       child: Padding(
@@ -340,12 +381,18 @@ class _ImageSection extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Optional: capture or select a prescription image. No OCR — image is stored locally for reference.',
+              'Optional: capture or select a prescription image. Then run OCR only if you want help autofilling the form.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 16),
+            _StatusBanner(
+              flowStatus: state.flowStatus,
+              message: state.statusMessage,
+              hasImage: state.hasAttachedImage,
+            ),
+            if (state.statusMessage.isNotEmpty) const SizedBox(height: 16),
             if (imagePath.isNotEmpty) ...<Widget>[
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
@@ -401,14 +448,163 @@ class _ImageSection extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const Key('add-med-change-image'),
+                      onPressed: state.isPickingImage ? null : onPickImage,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('Change Image'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      key: const Key('add-med-run-ocr'),
+                      onPressed: onRunOcr == null
+                          ? null
+                          : () => onRunOcr!.call(),
+                      icon: const Icon(Icons.document_scanner_outlined),
+                      label: Text(
+                        state.isRunningOcr ? 'Running OCR...' : 'Run OCR',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ] else
               OutlinedButton.icon(
                 key: const Key('add-med-pick-image-button'),
-                onPressed: onPickImage,
+                onPressed: state.isPickingImage ? null : onPickImage,
                 icon: const Icon(Icons.add_a_photo_rounded),
                 label: const Text('Add Image'),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({
+    required this.flowStatus,
+    required this.message,
+    required this.hasImage,
+  });
+
+  final AddMedicationFlowStatus flowStatus;
+  final String message;
+  final bool hasImage;
+
+  @override
+  Widget build(BuildContext context) {
+    if (message.isEmpty && flowStatus == AddMedicationFlowStatus.idle) {
+      return const SizedBox.shrink();
+    }
+
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    Color backgroundColor = colorScheme.surfaceContainerHighest;
+    Color foregroundColor = colorScheme.onSurfaceVariant;
+    IconData icon = Icons.document_scanner_outlined;
+
+    switch (flowStatus) {
+      case AddMedicationFlowStatus.pickingImage:
+        backgroundColor = colorScheme.primaryContainer;
+        foregroundColor = colorScheme.onPrimaryContainer;
+        icon = Icons.photo_library_outlined;
+        break;
+      case AddMedicationFlowStatus.imageAttached:
+        backgroundColor = colorScheme.secondaryContainer;
+        foregroundColor = colorScheme.onSecondaryContainer;
+        icon = Icons.photo_outlined;
+        break;
+      case AddMedicationFlowStatus.runningOcr:
+        backgroundColor = colorScheme.primaryContainer;
+        foregroundColor = colorScheme.onPrimaryContainer;
+        icon = Icons.autorenew_rounded;
+        break;
+      case AddMedicationFlowStatus.ocrSuccess:
+        backgroundColor = colorScheme.tertiaryContainer;
+        foregroundColor = colorScheme.onTertiaryContainer;
+        icon = Icons.check_circle_outline_rounded;
+        break;
+      case AddMedicationFlowStatus.ocrFailure:
+      case AddMedicationFlowStatus.saveFailure:
+      case AddMedicationFlowStatus.saveSuccess:
+      case AddMedicationFlowStatus.idle:
+        break;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (flowStatus == AddMedicationFlowStatus.pickingImage ||
+              flowStatus == AddMedicationFlowStatus.runningOcr)
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: foregroundColor,
+              ),
+            )
+          else
+            Icon(icon, size: 20, color: foregroundColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message.isEmpty
+                  ? hasImage
+                        ? 'Image attached. Run OCR if you want help filling the form.'
+                        : 'Add a prescription image if you want optional OCR assistance.'
+                  : message,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: foregroundColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessageBanner extends StatelessWidget {
+  const _MessageBanner({
+    required this.message,
+    required this.backgroundColor,
+    required this.foregroundColor,
+  });
+
+  final String message;
+  final Color backgroundColor;
+  final Color foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        message,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: foregroundColor,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

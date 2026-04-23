@@ -94,6 +94,25 @@ class LocalDemoStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateMedicationEvents(List<MedicationEvent> updatedEvents) {
+    if (updatedEvents.isEmpty) {
+      return;
+    }
+
+    final Map<String, MedicationEvent> updatesById = <String, MedicationEvent>{
+      for (final MedicationEvent evt in updatedEvents) evt.id: evt,
+    };
+
+    _medicationEvents = _medicationEvents
+        .map(
+          (MedicationEvent event) => updatesById.containsKey(event.id)
+              ? updatesById[event.id]!
+              : event,
+        )
+        .toList(growable: false);
+    notifyListeners();
+  }
+
   void upsertCalendarContextEvent(CalendarContextEvent updatedEvent) {
     final bool exists = _calendarContextEvents.any(
       (CalendarContextEvent event) => event.id == updatedEvent.id,
@@ -132,6 +151,21 @@ class LocalDemoStore extends ChangeNotifier {
               activity.id == updatedActivity.id ? updatedActivity : activity,
         )
         .toList(growable: false);
+    notifyListeners();
+  }
+
+  void resetAll() {
+    _reminderIntervalMinutes = _seedData.reminderIntervalMinutes > 0
+        ? _seedData.reminderIntervalMinutes
+        : LocalDemoSeed.defaultReminderIntervalMinutes;
+    _patientProfile = _seedData.patientProfile;
+    _prescriptions = List<Prescription>.from(_seedData.prescriptions);
+    _medicationEvents = List<MedicationEvent>.from(_seedData.medicationEvents);
+    _calendarContextEvents = List<CalendarContextEvent>.from(
+      _seedData.calendarContextEvents,
+    );
+    _alerts = List<DecisionAlert>.from(_seedData.alerts);
+    _activities = <GoogleCalendarActivity>[];
     notifyListeners();
   }
 }

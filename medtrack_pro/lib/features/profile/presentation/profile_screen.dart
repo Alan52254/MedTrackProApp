@@ -258,41 +258,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _SectionCard(
               title: 'Caregiver',
               children: <Widget>[
-                SwitchListTile(
-                  key: const Key('profile-has-caregiver-switch'),
-                  value: state.form.hasCaregiver,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Has caregiver'),
-                  subtitle: const Text(
-                    'Enable caregiver contact fields for this profile.',
+                _LabeledField(
+                  label: 'Caregiver name',
+                  child: TextField(
+                    key: const Key('profile-caregiver-name-field'),
+                    controller: _caregiverNameController,
+                    onChanged: _controller.updateCaregiverName,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter caregiver name',
+                    ),
                   ),
-                  onChanged: _controller.updateHasCaregiver,
                 ),
-                if (state.form.hasCaregiver) ...<Widget>[
-                  _LabeledField(
-                    label: 'Caregiver name',
-                    child: TextField(
-                      key: const Key('profile-caregiver-name-field'),
-                      controller: _caregiverNameController,
-                      onChanged: _controller.updateCaregiverName,
-                      decoration: const InputDecoration(
-                        hintText: 'Enter caregiver name',
-                      ),
+                const SizedBox(height: 16),
+                _LabeledField(
+                  label: 'Caregiver phone',
+                  child: TextField(
+                    key: const Key('profile-caregiver-phone-field'),
+                    controller: _caregiverPhoneController,
+                    onChanged: _controller.updateCaregiverPhone,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter caregiver phone',
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  _LabeledField(
-                    label: 'Caregiver phone',
-                    child: TextField(
-                      key: const Key('profile-caregiver-phone-field'),
-                      controller: _caregiverPhoneController,
-                      onChanged: _controller.updateCaregiverPhone,
-                      decoration: const InputDecoration(
-                        hintText: 'Enter caregiver phone',
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ],
             ),
             const SizedBox(height: 20),
@@ -377,6 +365,9 @@ class _ProfileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool hasCaregiverContact =
+        state.form.caregiverName.trim().isNotEmpty ||
+        state.form.caregiverPhone.trim().isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -384,7 +375,7 @@ class _ProfileHeader extends StatelessWidget {
         Text('Profile', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 12),
         Text(
-          'Edit the shared local demo profile. Save writes to app-level local state, and Reset restores the current saved version cleanly.',
+          'Edit the shared local demo profile. Save writes to app-level local state, and Reset restores the initial local seed state.',
           style: Theme.of(
             context,
           ).textTheme.bodyLarge?.copyWith(color: colorScheme.onSurfaceVariant),
@@ -399,9 +390,7 @@ class _ProfileHeader extends StatelessWidget {
               icon: Icons.badge_rounded,
             ),
             _HeaderChip(
-              label: state.form.hasCaregiver
-                  ? 'Caregiver enabled'
-                  : 'Self-managed',
+              label: hasCaregiverContact ? 'Caregiver enabled' : 'Self-managed',
               icon: Icons.support_agent_rounded,
             ),
           ],

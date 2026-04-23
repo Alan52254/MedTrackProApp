@@ -1,7 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
-import '../../../core/models/decision_alert.dart';
 import '../../../core/models/medication_event.dart';
+import '../../../core/services/local_demo_seed.dart';
 import '../../../core/services/local_demo_store.dart';
 import 'home_state.dart';
 import 'reminder_controller.dart';
@@ -9,31 +11,46 @@ import 'reminder_controller.dart';
 class HomeController extends ChangeNotifier {
   HomeController({LocalDemoStore? store})
     : _store = store ?? LocalDemoStore(),
-      _ownsStore = store == null {
+      _ownsStore = store == null,
+      _currentTime = DateTime.now() {
     _store.addListener(_handleStoreChanged);
+    _evaluateReminderOnFirstLoad();
+    _ticker = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _handleTimeTick(),
+    );
   }
 
-  static const String scheduleImpactAlertId = 'schedule-impact';
+  static const int rescheduleDelayThresholdMultiplier = 3;
 
   final LocalDemoStore _store;
   final bool _ownsStore;
   ReminderController? _reminderController;
+  Timer? _ticker;
+  DateTime _currentTime;
+  String _scheduleAdjustmentMessage = '';
+  String? _lastActiveReminderEventId;
 
-  /// Inject a [ReminderController] so that Done/Skip actions cancel reminders.
   set reminderController(ReminderController? controller) {
     _reminderController = controller;
   }
 
+  int get reminderIntervalMinutes => _store.reminderIntervalMinutes > 0
+      ? _store.reminderIntervalMinutes
+      : LocalDemoSeed.defaultReminderIntervalMinutes;
+
   HomeState get state => HomeState(
     referenceDate: _store.referenceDate,
+    currentTime: _currentTime,
     patientProfile: _store.patientProfile,
     prescriptions: _store.prescriptions,
     medicationEvents: _store.medicationEvents,
-    alerts: _store.alerts,
+    scheduleAdjustmentMessage: _scheduleAdjustmentMessage,
   );
 
   @override
   void dispose() {
+    _ticker?.cancel();
     _store.removeListener(_handleStoreChanged);
     if (_ownsStore) {
       _store.dispose();
@@ -52,10 +69,12 @@ class HomeController extends ChangeNotifier {
       event.copyWith(
         status: 'done',
         actualTakenAt: actionTime,
+        clearLastReminderTime: true,
         updatedAt: actionTime,
       ),
     );
     _reminderController?.cancelReminderForEvent(eventId);
+    _clearScheduleAdjustmentIfResolved();
   }
 
   void delayEvent(String eventId, Duration delay) {
@@ -67,10 +86,6 @@ class HomeController extends ChangeNotifier {
     delayEventToTime(eventId, targetTime);
   }
 
-  /// Delays [eventId] so its scheduledStart becomes [targetTime].
-  ///
-  /// Returns the normalised date of [targetTime] so the caller can navigate
-  /// to the calendar for that day, or `null` if the event was not found.
   DateTime? delayEventToTime(String eventId, DateTime targetTime) {
     final MedicationEvent? event = _findEvent(eventId);
     if (event == null) {
@@ -97,21 +112,13 @@ class HomeController extends ChangeNotifier {
 
     _store.updateMedicationEvent(delayedEvent);
     _reminderController?.cancelReminderForEvent(eventId);
-
-    final String timeLabel =
-        '${targetTime.hour.toString().padLeft(2, '0')}:${targetTime.minute.toString().padLeft(2, '0')}';
-    _store.replaceAlerts(
-      _upsertScheduleImpactAlert(
-        severity: 'info',
-        explanation:
-            '${_labelForPrescription(event.prescriptionId)} was delayed to '
-            '$timeLabel. Only this dose changed in the local demo.',
-        recommendation:
-            'Keep the rest of today\'s plan unchanged for now and monitor the next dose.',
-      ),
-    );
+    _setPlaceholderRescheduleMessageIfNeeded(delayedEvent, _currentTime);
 
     return DateTime(targetTime.year, targetTime.month, targetTime.day);
+  }
+
+  void snoozeReminder(String eventId) {
+    delayEvent(eventId, Duration(minutes: reminderIntervalMinutes));
   }
 
   void skipEvent(String eventId) {
@@ -123,39 +130,13 @@ class HomeController extends ChangeNotifier {
     final MedicationEvent skippedEvent = event.copyWith(
       status: 'skipped',
       clearActualTakenAt: true,
+      clearLastReminderTime: true,
       updatedAt: DateTime.now(),
     );
 
     _store.updateMedicationEvent(skippedEvent);
     _reminderController?.cancelReminderForEvent(eventId);
-    _store.replaceAlerts(
-      _upsertScheduleImpactAlert(
-        severity: 'warning',
-        explanation:
-            '${_labelForPrescription(event.prescriptionId)} was skipped. '
-            'This local demo flags a possible downstream impact without recalculating the full schedule.',
-        recommendation:
-            'Review the remaining doses today before bedtime and avoid stacking catch-up doses.',
-      ),
-    );
-  }
-
-  void dismissAlert(String alertId) {
-    _store.replaceAlerts(
-      state.alerts
-          .map(
-            (DecisionAlert alert) =>
-                alert.id == alertId ? alert.copyWith(dismissed: true) : alert,
-          )
-          .toList(growable: false),
-    );
-  }
-
-  void handleAlertAction(String alertId, String actionLabel) {
-    if (actionLabel.isEmpty) {
-      return;
-    }
-    dismissAlert(alertId);
+    _clearScheduleAdjustmentIfResolved();
   }
 
   MedicationEvent? _findEvent(String eventId) {
@@ -167,39 +148,112 @@ class HomeController extends ChangeNotifier {
     return null;
   }
 
-  List<DecisionAlert> _upsertScheduleImpactAlert({
-    required String severity,
-    required String explanation,
-    required String recommendation,
-  }) {
-    final DecisionAlert updatedAlert = DecisionAlert(
-      id: scheduleImpactAlertId,
-      patientId: _store.patientProfile.id,
-      type: 'schedule_impact',
-      severity: severity,
-      title: 'Schedule impact updated',
-      explanation: explanation,
-      recommendation: recommendation,
-      actionButtons: const <String>['Keep current plan'],
-      dismissed: false,
-      createdAt: DateTime.now(),
-    );
+  void _setPlaceholderRescheduleMessageIfNeeded(
+    MedicationEvent event,
+    DateTime now,
+  ) {
+    final int threshold =
+        reminderIntervalMinutes * rescheduleDelayThresholdMultiplier;
+    final DateTime baseline = event.originalStart ?? event.scheduledStart;
+    final int overdueMinutes = now.difference(baseline).inMinutes;
+    final bool exceededDelayThreshold = event.delayMinutes >= threshold;
+    final bool exceededOverdueThreshold = overdueMinutes >= threshold;
 
-    final List<DecisionAlert> remainingAlerts = _store.alerts
-        .where((DecisionAlert alert) => alert.id != scheduleImpactAlertId)
-        .toList(growable: true);
-
-    remainingAlerts.insert(0, updatedAlert);
-    return remainingAlerts;
+    if (exceededDelayThreshold || exceededOverdueThreshold) {
+      _scheduleAdjustmentMessage =
+          'This dose may need rescheduling. Smart re-order guidance will be added in a later phase.';
+    } else {
+      _scheduleAdjustmentMessage = '';
+    }
   }
 
-  String _labelForPrescription(String prescriptionId) {
-    return _store.prescriptions
-        .firstWhere((prescription) => prescription.id == prescriptionId)
-        .drugName;
+  void _clearScheduleAdjustmentIfResolved() {
+    final bool hasActionableEvents = _store.medicationEvents.any(
+      (MedicationEvent event) =>
+          (event.status == 'pending' || event.status == 'delayed'),
+    );
+    if (!hasActionableEvents) {
+      _scheduleAdjustmentMessage = '';
+    }
+  }
+
+  void _refreshScheduleAdjustmentMessage(DateTime now) {
+    final Map<String, bool> activePrescriptionById = <String, bool>{
+      for (final prescription in _store.prescriptions)
+        prescription.id: prescription.active,
+    };
+    for (final MedicationEvent event in _store.medicationEvents) {
+      if (event.status != 'pending' && event.status != 'delayed') {
+        continue;
+      }
+      if (!(activePrescriptionById[event.prescriptionId] ?? false)) {
+        continue;
+      }
+      _setPlaceholderRescheduleMessageIfNeeded(event, now);
+      if (_scheduleAdjustmentMessage.isNotEmpty) {
+        return;
+      }
+    }
+    _scheduleAdjustmentMessage = '';
   }
 
   void _handleStoreChanged() {
+    _currentTime = DateTime.now();
+    _lastActiveReminderEventId = _computeActiveReminderEventId(_currentTime);
+    _refreshScheduleAdjustmentMessage(_currentTime);
     notifyListeners();
+  }
+
+  void _handleTimeTick() {
+    final DateTime now = DateTime.now();
+    final String? nextActiveReminderEventId = _computeActiveReminderEventId(
+      now,
+    );
+    final String previousMessage = _scheduleAdjustmentMessage;
+    _refreshScheduleAdjustmentMessage(now);
+    _currentTime = now;
+
+    final bool reminderChanged =
+        nextActiveReminderEventId != _lastActiveReminderEventId;
+    final bool messageChanged = previousMessage != _scheduleAdjustmentMessage;
+    if (reminderChanged || messageChanged) {
+      _lastActiveReminderEventId = nextActiveReminderEventId;
+      notifyListeners();
+    }
+  }
+
+  String? _computeActiveReminderEventId(DateTime referenceTime) {
+    final Map<String, bool> activePrescriptionById = <String, bool>{
+      for (final prescription in _store.prescriptions)
+        prescription.id: prescription.active,
+    };
+    final List<MedicationEvent> todayEvents =
+        _store.medicationEvents
+            .where(
+              (MedicationEvent event) =>
+                  event.scheduledStart.year == _store.referenceDate.year &&
+                  event.scheduledStart.month == _store.referenceDate.month &&
+                  event.scheduledStart.day == _store.referenceDate.day &&
+                  (activePrescriptionById[event.prescriptionId] ?? false) &&
+                  (event.status == 'pending' || event.status == 'delayed'),
+            )
+            .toList(growable: true)
+          ..sort(
+            (MedicationEvent first, MedicationEvent second) =>
+                first.scheduledStart.compareTo(second.scheduledStart),
+          );
+
+    for (final MedicationEvent event in todayEvents) {
+      if (!referenceTime.isBefore(event.scheduledStart)) {
+        return event.id;
+      }
+    }
+    return null;
+  }
+
+  void _evaluateReminderOnFirstLoad() {
+    _currentTime = DateTime.now();
+    _lastActiveReminderEventId = _computeActiveReminderEventId(_currentTime);
+    _refreshScheduleAdjustmentMessage(_currentTime);
   }
 }

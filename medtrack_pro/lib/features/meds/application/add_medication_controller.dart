@@ -1,19 +1,29 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../core/models/prescription_ocr_result.dart';
 import '../../../core/models/prescription.dart';
 import '../../../core/services/local_demo_store.dart';
+import '../../../core/services/prescription_ocr_service.dart';
 import 'add_medication_state.dart';
 
-/// Controller managing the Add Medication form lifecycle.
 class AddMedicationController extends ChangeNotifier {
-  AddMedicationController({required LocalDemoStore store}) : _store = store;
+  AddMedicationController({
+    required LocalDemoStore store,
+    PrescriptionOcrService? ocrService,
+  }) : _store = store,
+       _ocrService = ocrService ?? const PrescriptionOcrService();
 
   final LocalDemoStore _store;
+  final PrescriptionOcrService _ocrService;
+  bool _disposed = false;
 
   AddMedicationState _state = const AddMedicationState(
     form: AddMedicationFormData(),
     saveMessage: '',
     isSaved: false,
+    flowStatus: AddMedicationFlowStatus.idle,
+    statusMessage: '',
+    errorMessage: '',
   );
 
   AddMedicationState get state => _state;
@@ -22,6 +32,7 @@ class AddMedicationController extends ChangeNotifier {
     _state = _state.copyWith(
       form: _state.form.copyWith(drugName: value),
       saveMessage: '',
+      errorMessage: '',
     );
     notifyListeners();
   }
@@ -30,6 +41,7 @@ class AddMedicationController extends ChangeNotifier {
     _state = _state.copyWith(
       form: _state.form.copyWith(commonFrequency: value),
       saveMessage: '',
+      errorMessage: '',
     );
     notifyListeners();
   }
@@ -38,6 +50,7 @@ class AddMedicationController extends ChangeNotifier {
     _state = _state.copyWith(
       form: _state.form.copyWith(dose: value),
       saveMessage: '',
+      errorMessage: '',
     );
     notifyListeners();
   }
@@ -46,6 +59,7 @@ class AddMedicationController extends ChangeNotifier {
     _state = _state.copyWith(
       form: _state.form.copyWith(durationDays: value),
       saveMessage: '',
+      errorMessage: '',
     );
     notifyListeners();
   }
@@ -54,6 +68,7 @@ class AddMedicationController extends ChangeNotifier {
     _state = _state.copyWith(
       form: _state.form.copyWith(indication: value),
       saveMessage: '',
+      errorMessage: '',
     );
     notifyListeners();
   }
@@ -62,6 +77,7 @@ class AddMedicationController extends ChangeNotifier {
     _state = _state.copyWith(
       form: _state.form.copyWith(drugInteractions: value),
       saveMessage: '',
+      errorMessage: '',
     );
     notifyListeners();
   }
@@ -70,6 +86,17 @@ class AddMedicationController extends ChangeNotifier {
     _state = _state.copyWith(
       form: _state.form.copyWith(note: value),
       saveMessage: '',
+      errorMessage: '',
+    );
+    notifyListeners();
+  }
+
+  void beginImagePicking(String sourceLabel) {
+    _state = _state.copyWith(
+      saveMessage: '',
+      flowStatus: AddMedicationFlowStatus.pickingImage,
+      statusMessage: 'Opening $sourceLabel...',
+      errorMessage: '',
     );
     notifyListeners();
   }
@@ -78,6 +105,35 @@ class AddMedicationController extends ChangeNotifier {
     _state = _state.copyWith(
       form: _state.form.copyWith(imagePath: path, imageSource: source),
       saveMessage: '',
+      flowStatus: AddMedicationFlowStatus.imageAttached,
+      statusMessage: 'Image attached. You can review it or run OCR.',
+      errorMessage: '',
+    );
+    notifyListeners();
+  }
+
+  void cancelImagePicking() {
+    _state = _state.copyWith(
+      flowStatus: _state.form.imagePath.isEmpty
+          ? AddMedicationFlowStatus.idle
+          : AddMedicationFlowStatus.imageAttached,
+      statusMessage: _state.form.imagePath.isEmpty
+          ? ''
+          : 'Image attached. You can review it or run OCR.',
+      errorMessage: '',
+    );
+    notifyListeners();
+  }
+
+  void failImagePicking(String message) {
+    _state = _state.copyWith(
+      flowStatus: _state.form.imagePath.isEmpty
+          ? AddMedicationFlowStatus.idle
+          : AddMedicationFlowStatus.imageAttached,
+      statusMessage: _state.form.imagePath.isEmpty
+          ? ''
+          : 'Image attached. You can review it or run OCR.',
+      errorMessage: message,
     );
     notifyListeners();
   }
@@ -86,22 +142,129 @@ class AddMedicationController extends ChangeNotifier {
     _state = _state.copyWith(
       form: _state.form.copyWith(imagePath: '', imageSource: ''),
       saveMessage: '',
+      flowStatus: AddMedicationFlowStatus.idle,
+      statusMessage: '',
+      errorMessage: '',
     );
     notifyListeners();
   }
 
-  /// Validate and save the prescription to the local store.
+  Future<void> extractFromSelectedImage() async {
+    if (_disposed || _state.isRunningOcr) {
+      return;
+    }
+
+    final String imagePath = _state.form.imagePath;
+    if (imagePath.isEmpty) {
+      _state = _state.copyWith(
+        flowStatus: AddMedicationFlowStatus.ocrFailure,
+        statusMessage: '',
+        errorMessage: 'Select a prescription image before running OCR.',
+      );
+      notifyListeners();
+      return;
+    }
+
+    _state = _state.copyWith(
+      flowStatus: AddMedicationFlowStatus.runningOcr,
+      statusMessage: 'Processing selected image...',
+      errorMessage: '',
+      saveMessage: '',
+    );
+    notifyListeners();
+
+    try {
+      final PrescriptionOcrResult result = await _ocrService.extractFromImage(
+        imagePath,
+      );
+      if (_disposed) {
+        return;
+      }
+
+      if (result.isEmpty) {
+        _state = _state.copyWith(
+          flowStatus: AddMedicationFlowStatus.ocrFailure,
+          statusMessage: '',
+          errorMessage:
+              'OCR could not detect medication details. You can keep entering the form manually.',
+        );
+      } else {
+        _applyOcrAutofill(result);
+        _state = _state.copyWith(
+          flowStatus: AddMedicationFlowStatus.ocrSuccess,
+          statusMessage: 'OCR filled some fields. Please review before saving.',
+          errorMessage: '',
+        );
+      }
+    } catch (_) {
+      if (_disposed) {
+        return;
+      }
+      _state = _state.copyWith(
+        flowStatus: AddMedicationFlowStatus.ocrFailure,
+        statusMessage: '',
+        errorMessage:
+            'We could not read this prescription clearly. You can still complete the form manually.',
+      );
+    }
+
+    notifyListeners();
+  }
+
+  void _applyOcrAutofill(PrescriptionOcrResult result) {
+    if (result.drugName.isNotEmpty) {
+      updateDrugName(result.drugName);
+    }
+    if (result.dose.isNotEmpty) {
+      updateDose(result.dose);
+    }
+
+    final String normalizedFrequency = _normalizeFrequency(
+      result.frequency,
+      _state.form.commonFrequency,
+    );
+    if (normalizedFrequency != _state.form.commonFrequency) {
+      updateCommonFrequency(normalizedFrequency);
+    }
+    if (result.duration.isNotEmpty) {
+      updateDurationDays(result.duration);
+    }
+    if (result.indication.isNotEmpty) {
+      updateIndication(result.indication);
+    }
+    if (result.interactionField.isNotEmpty) {
+      updateDrugInteractions(result.interactionField);
+    }
+    if (result.note.isNotEmpty) {
+      updateNote(result.note);
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   void save() {
     final AddMedicationFormData form = _state.form;
 
     if (form.drugName.trim().isEmpty) {
-      _state = _state.copyWith(saveMessage: 'Drug name is required.');
+      _state = _state.copyWith(
+        saveMessage: 'Drug name is required.',
+        flowStatus: AddMedicationFlowStatus.saveFailure,
+        errorMessage: '',
+      );
       notifyListeners();
       return;
     }
 
     if (form.dose.trim().isEmpty) {
-      _state = _state.copyWith(saveMessage: 'Dose is required.');
+      _state = _state.copyWith(
+        saveMessage: 'Dose is required.',
+        flowStatus: AddMedicationFlowStatus.saveFailure,
+        errorMessage: '',
+      );
       notifyListeners();
       return;
     }
@@ -144,6 +307,9 @@ class AddMedicationController extends ChangeNotifier {
       form: const AddMedicationFormData(),
       saveMessage: '${prescription.drugName} added successfully.',
       isSaved: true,
+      flowStatus: AddMedicationFlowStatus.saveSuccess,
+      statusMessage: '',
+      errorMessage: '',
     );
     notifyListeners();
   }
@@ -153,8 +319,23 @@ class AddMedicationController extends ChangeNotifier {
       form: AddMedicationFormData(),
       saveMessage: '',
       isSaved: false,
+      flowStatus: AddMedicationFlowStatus.idle,
+      statusMessage: '',
+      errorMessage: '',
     );
     notifyListeners();
+  }
+
+  String _normalizeFrequency(String value, String fallback) {
+    switch (value) {
+      case 'Once daily':
+      case 'Twice daily':
+      case 'Three times daily':
+      case 'As needed':
+        return value;
+      default:
+        return fallback;
+    }
   }
 
   String _resolveAdministrationType(String frequency) {
